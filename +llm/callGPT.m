@@ -18,6 +18,9 @@ function response = callGPT(prompt)
         elseif strcmpi(apiConfig.provider, 'local')
             % Call local Llama API
             response = callLocalLLM(prompt, apiConfig);
+        elseif strcmpi(apiConfig.provider, 'gemini')
+            % Call Google Gemini API
+            response = callGemini(prompt, apiConfig);
         else
             error('Unknown LLM provider: %s', apiConfig.provider);
         end
@@ -30,16 +33,26 @@ end
 function apiConfig = getAPIConfig()
     % Get API configuration - either from environment or from settings file
     
-    % Default to OpenAI
-    apiConfig = struct('provider', 'openai', ...
-                      'apiKey', '', ...
-                      'model', 'gpt-4o', ...
-                      'endpoint', 'https://api.openai.com/v1/chat/completions');
+    % Default to Gemini
+    apiConfig = struct('provider', 'gemini', ...
+                      'apiKey', 'AIzaSyArhg4YI1-9EK-Rj2CC8Hs12d-tIFb9Wco', ...
+                      'model', 'gemini-pro', ...
+                      'endpoint', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent');
     
-    % Look for OPENAI_API_KEY environment variable
+    % Look for API environment variables
     apiKey = getenv('OPENAI_API_KEY');
     if ~isempty(apiKey)
+        apiConfig.provider = 'openai';
         apiConfig.apiKey = apiKey;
+        apiConfig.model = 'gpt-4o';
+        apiConfig.endpoint = 'https://api.openai.com/v1/chat/completions';
+        return;
+    end
+    
+    geminiKey = getenv('GEMINI_API_KEY');
+    if ~isempty(geminiKey)
+        apiConfig.provider = 'gemini';
+        apiConfig.apiKey = geminiKey;
         return;
     end
     
@@ -137,5 +150,66 @@ function response = callLocalLLM(prompt, apiConfig)
         response = responseData.text;
     else
         error('Unexpected response format from local LLM API');
+    end
+end
+
+function response = callGemini(prompt, apiConfig)
+    % Call Google Gemini API with the given prompt
+    
+    % Add API key to the endpoint URL
+    endpoint = [apiConfig.endpoint, '?key=', apiConfig.apiKey];
+    
+    % Prepare request options
+    options = weboptions('ContentType', 'json');
+    
+    % Prepare request body
+    if isstruct(prompt) && isfield(prompt, 'messages')
+        % Convert OpenAI-style messages to Gemini format
+        messages = prompt.messages;
+        
+        % Extract content from messages
+        content = struct('parts', {});
+        
+        % Process each message
+        for i = 1:numel(messages)
+            if isfield(messages{i}, 'content')
+                content.parts{end+1} = struct('text', messages{i}.content);
+            end
+        end
+        
+        requestBody = struct('contents', content, ...
+                            'generationConfig', struct('temperature', 0.7, ...
+                                                     'maxOutputTokens', 2048));
+    else
+        % Create a simple text request
+        if ischar(prompt) || isstring(prompt)
+            promptText = char(prompt);
+        else
+            promptText = 'Please assist with this MATLAB/Simulink task';
+        end
+        
+        requestBody = struct('contents', struct('parts', {{struct('text', promptText)}}), ...
+                            'generationConfig', struct('temperature', 0.7, ...
+                                                     'maxOutputTokens', 2048));
+    end
+    
+    % Make the API call
+    responseData = webwrite(endpoint, requestBody, options);
+    
+    % Extract the response text
+    if isfield(responseData, 'candidates') && ~isempty(responseData.candidates)
+        candidate = responseData.candidates{1};
+        if isfield(candidate, 'content') && isfield(candidate.content, 'parts') && ~isempty(candidate.content.parts)
+            part = candidate.content.parts{1};
+            if isfield(part, 'text')
+                response = part.text;
+            else
+                error('Text field not found in Gemini response part');
+            end
+        else
+            error('No content or parts found in Gemini response');
+        end
+    else
+        error('No candidates returned from Gemini API');
     end
 end

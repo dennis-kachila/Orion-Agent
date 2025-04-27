@@ -30,7 +30,7 @@ orion-ai-agent-mab/
 │   └── doc_search.m         % find_system / web search of MathWorks help
 │
 ├── +llm/
-│   ├── callGPT.m            % webwrite → OpenAI or local Llama
+│   ├── callGPT.m            % webwrite → OpenAI or local Llama or Gemini
 │   └── promptTemplates.m    % System & few-shot templates
 │
 ├── app/
@@ -43,10 +43,13 @@ orion-ai-agent-mab/
 ## Setup and Configuration
 
 1. Clone the repo into a regular MATLAB project (so paths auto-load).
-2. Open AgentChat.mlapp and press Run. The UI creates an agent.Agent instance internally.
-3. Configure the LLM:
-   - Set the OPENAI_API_KEY environment variable
-   - Or modify callGPT.m to use your local LLM endpoint
+2. By default, the agent is configured to use Google Gemini API with the provided key.
+3. (Optional) Configure a different LLM provider:
+   - For OpenAI: Set the OPENAI_API_KEY environment variable
+   - For Google Gemini: Set the GEMINI_API_KEY environment variable, or use the default key
+   - For a local LLM: Modify llm/callGPT.m to use your local endpoint
+4. (Optional) Run `llm_settings.m` to save your LLM configuration settings.
+5. Open `app/AgentChat.mlapp` and press Run in MATLAB. The UI creates an agent.Agent instance internally.
 
 ## Running Tests
 
@@ -70,11 +73,30 @@ Orion Agent will execute the appropriate sequence of actions:
 5. Run a simulation
 6. Show the results and model preview
 
+## Response Format
+
+Orion Agent returns responses in a structured JSON format:
+
+```json
+{
+  "summary": "Brief description of what was accomplished",
+  "files": ["file1.m", "model1.slx", ...],
+  "snapshot": "data:image/png;base64,...",
+  "log": ["tool-call-1", "tool-call-2", ...]
+}
+```
+
+This format includes:
+- A summary of the completed task
+- List of files that were created or modified
+- A base64-encoded PNG snapshot of any Simulink model
+- A log of the tool calls that were executed
+
 ## Runtime Flow
 
 The ReAct loop in Agent.m follows this pattern:
 1. PromptBuilder merges user text, truncated history, and tool list
-2. CallGPT generates a tool call with arguments in JSON format
+2. LLM generates a tool call with arguments in JSON format
 3. Dispatcher verifies the tool exists in ToolBox
 4. The tool is executed and returns a result (string, struct, PNG)
 5. Results are added to history and the loop continues until the task is complete

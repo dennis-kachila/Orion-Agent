@@ -144,6 +144,10 @@ classdef t_basic < matlab.unittest.TestCase
                 % Verify file was opened
                 testCase.verifyEqual(result.status, 'success', 'Status should be success');
                 testCase.verifyTrue(exist(tempFile, 'file') == 2, 'File should be created');
+            catch ME
+                % Handle any unexpected errors during the test
+                fprintf('Error in openEditor test: %s\n', ME.message);
+                rethrow(ME);
             finally
                 % Clean up
                 if exist(tempFile, 'file')

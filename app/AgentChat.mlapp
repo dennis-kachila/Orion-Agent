@@ -95,8 +95,77 @@ classdef AgentChat < matlab.apps.AppBase
             % Process and display the agent's response
             
             try
+                % Try to parse response as JSON
+                try
+                    responseData = jsondecode(response);
+                    isJsonResponse = true;
+                catch
+                    isJsonResponse = false;
+                end
+                
                 % Handle different response types
-                if isstruct(response)
+                if isJsonResponse && isstruct(responseData)
+                    % New JSON format response
+                    
+                    % Display summary if present
+                    if isfield(responseData, 'summary')
+                        app.updateChatHistory(['Summary: ', responseData.summary], 'assistant');
+                    end
+                    
+                    % Display files if present
+                    if isfield(responseData, 'files') && ~isempty(responseData.files)
+                        fileList = 'Files:';
+                        for i = 1:numel(responseData.files)
+                            fileList = [fileList, '\n- ', responseData.files{i}];
+                        end
+                        app.updateChatHistory(fileList, 'assistant');
+                    end
+                    
+                    % Display log if present
+                    if isfield(responseData, 'log') && ~isempty(responseData.log)
+                        logMsg = 'Tool calls:';
+                        for i = 1:min(5, numel(responseData.log))  % Show at most 5 tool calls
+                            logMsg = [logMsg, '\n- ', responseData.log{i}];
+                        end
+                        if numel(responseData.log) > 5
+                            logMsg = [logMsg, '\n(', num2str(numel(responseData.log) - 5), ' more tool calls not shown)'];
+                        end
+                        app.updateChatHistory(logMsg, 'assistant');
+                    end
+                    
+                    % Display error if present
+                    if isfield(responseData, 'error') 
+                        app.updateChatHistory(['Error: ', responseData.error], 'system');
+                    end
+                    
+                    % Update snapshot if present
+                    if isfield(responseData, 'snapshot') && ~isempty(responseData.snapshot)
+                        % Extract base64 data
+                        if startsWith(responseData.snapshot, 'data:image/png;base64,')
+                            base64Data = strrep(responseData.snapshot, 'data:image/png;base64,', '');
+                            
+                            % Decode and save to temp file
+                            imageData = base64decode(base64Data);
+                            tempFile = [tempname, '.png'];
+                            fid = fopen(tempFile, 'wb');
+                            fwrite(fid, imageData);
+                            fclose(fid);
+                            
+                            % Update preview
+                            app.updatePreview(tempFile);
+                        end
+                    end
+                    
+                    % Update model name if present
+                    if isfield(responseData, 'modelName')
+                        app.CurrentModelName = responseData.modelName;
+                        app.ModelNameLabel.Text = ['Model: ', app.CurrentModelName];
+                    end
+                    
+                elseif isstruct(response)
+                    % Legacy format - direct struct response
+                    % This branch handles the old behavior for compatibility
+                    
                     % Check for snapshot in the response
                     if isfield(response, 'snapshot') && ~isempty(response.snapshot)
                         % Decode and save base64 image data
@@ -154,8 +223,15 @@ classdef AgentChat < matlab.apps.AppBase
                         app.updateChatHistory(displayText, 'assistant');
                     end
                 elseif ischar(response) || isstring(response)
-                    % Display text response
-                    app.updateChatHistory(char(response), 'assistant');
+                    % Handle plain text response
+                    if isJsonResponse
+                        % If it's valid JSON but not a struct, show formatted
+                        app.updateChatHistory('Response (JSON):\n', 'assistant');
+                        app.updateChatHistory(response, 'assistant');
+                    else
+                        % Display normal text response
+                        app.updateChatHistory(char(response), 'assistant');
+                    end
                 else
                     % Unknown response type
                     app.updateChatHistory('Received response in unsupported format', 'system');
@@ -168,10 +244,7 @@ classdef AgentChat < matlab.apps.AppBase
                 app.StatusLabel.Text = ['Display error: ', ME.message];
             end
         end
-    end
-
-    % Callbacks that handle component events
-    methods (Access = private)
+        
         function SendButtonPushed(app, ~)
             % Execute when Send button is pushed
             

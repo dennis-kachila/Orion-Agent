@@ -6,6 +6,8 @@ classdef Agent < handle
         ToolBox % Registered tools container
         chatHistory % Stores the conversation history
         llmInterface % Interface to the LLM
+        toolLog % Maintains a log of all tool calls made
+        modifiedFiles % Tracks files that have been created or modified
     end
     
     methods
@@ -14,6 +16,8 @@ classdef Agent < handle
             obj.ToolBox = agent.ToolBox();
             obj.chatHistory = struct('role', {}, 'content', {});
             obj.llmInterface = @llm.callGPT;
+            obj.toolLog = {};
+            obj.modifiedFiles = {};
             
             % Add system message to history
             systemPrompt = llm.promptTemplates.getSystemPrompt();
@@ -34,6 +38,10 @@ classdef Agent < handle
             
             response = '';
             
+            % Clear tool log and file list for new user request
+            obj.toolLog = {};
+            obj.modifiedFiles = {};
+            
             while iterCount < maxIterations
                 iterCount = iterCount + 1;
                 
@@ -53,8 +61,25 @@ classdef Agent < handle
                         toolCall.tool, jsonencode(toolCall.args));
                     obj.chatHistory(end+1) = struct('role', 'assistant', 'content', thought);
                     
+                    % Add to tool log
+                    obj.toolLog{end+1} = sprintf('%s(%s)', toolCall.tool, jsonencode(toolCall.args));
+                    
                     % Dispatch to appropriate tool
                     [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                    
+                    % Check for file creation/modification
+                    if isfield(result, 'fileName')
+                        % For tools like open_editor that create/modify files
+                        if ~ismember(result.fileName, obj.modifiedFiles)
+                            obj.modifiedFiles{end+1} = result.fileName;
+                        end
+                    elseif isfield(result, 'modelName')
+                        % For Simulink model files
+                        modelFile = [result.modelName, '.slx'];
+                        if ~ismember(modelFile, obj.modifiedFiles)
+                            obj.modifiedFiles{end+1} = modelFile;
+                        end
+                    end
                     
                     % Record observation in history
                     if isstruct(result) || iscell(result)
@@ -72,7 +97,20 @@ classdef Agent < handle
                     
                     % If task complete, return final response
                     if isDone
-                        response = resultStr;
+                        % Create complete response with all required fields
+                        finalResponse = struct(...
+                            'summary', 'Task completed successfully', ...
+                            'files', {obj.modifiedFiles}, ...
+                            'log', {obj.toolLog}, ...
+                            'snapshot', '');
+                        
+                        % Add snapshot if available
+                        if isfield(result, 'snapshot') && ~isempty(result.snapshot)
+                            finalResponse.snapshot = ['data:image/png;base64,', result.snapshot];
+                        end
+                        
+                        % Convert to JSON
+                        response = jsonencode(finalResponse);
                         break;
                     end
                     
@@ -89,7 +127,14 @@ classdef Agent < handle
             
             % If no response generated within max iterations
             if isempty(response)
-                response = 'Max iterations reached without completing the task.';
+                % Create error response with required fields
+                errorResponse = struct(...
+                    'summary', 'Max iterations reached without completing the task', ...
+                    'files', {obj.modifiedFiles}, ...
+                    'log', {obj.toolLog}, ...
+                    'error', 'Could not complete task within maximum iterations');
+                
+                response = jsonencode(errorResponse);
             end
             
             return;
@@ -104,6 +149,18 @@ classdef Agent < handle
             % Clear conversation history except system prompt
             systemPrompt = obj.chatHistory(1);
             obj.chatHistory = systemPrompt;
+            obj.toolLog = {};
+            obj.modifiedFiles = {};
+        end
+        
+        function log = getToolLog(obj)
+            % Get the log of tool calls made
+            log = obj.toolLog;
+        end
+        
+        function files = getModifiedFiles(obj)
+            % Get the list of files that were created or modified
+            files = obj.modifiedFiles;
         end
     end
 end
