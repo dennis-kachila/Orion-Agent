@@ -1,0 +1,25 @@
+# MATLAB generated files
+*.asv
+*.m~
+*.mex*
+*.mat
+*.slxc
+slprj/
+
+# API key & settings files
+llm_settings.mat
+api_keys.env
+set_api_key.bat
+
+# Personal environment files
+.env
+*.env
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

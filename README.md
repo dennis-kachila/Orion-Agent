@@ -34,7 +34,7 @@ orion-ai-agent-mab/
 │   └── promptTemplates.m    % System & few-shot templates
 │
 ├── app/
-│   └── AgentChat.mlapp      % App Designer UI: chat pane + live model PNG
+│   └── AgentChat.m          % App Designer UI converted to .m file
 │
 └── tests/
     └── t_basic.m            % ensures each tool works on clean MATLAB
@@ -43,13 +43,45 @@ orion-ai-agent-mab/
 ## Setup and Configuration
 
 1. Clone the repo into a regular MATLAB project (so paths auto-load).
-2. By default, the agent is configured to use Google Gemini API with the provided key.
-3. (Optional) Configure a different LLM provider:
-   - For OpenAI: Set the OPENAI_API_KEY environment variable
-   - For Google Gemini: Set the GEMINI_API_KEY environment variable, or use the default key
-   - For a local LLM: Modify llm/callGPT.m to use your local endpoint
-4. (Optional) Run `llm_settings.m` to save your LLM configuration settings.
-5. Open `app/AgentChat.mlapp` and press Run in MATLAB. The UI creates an agent.Agent instance internally.
+2. Set up your API key using one of the following methods:
+   - **Environment variable**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY` as environment variables
+   - **Settings file**: Run `llm_settings.m` which will prompt you for your API key and save it securely
+   
+   > **⚠️ SECURITY WARNING**: Never hardcode API keys directly in source code files. Always use environment variables or a settings file that is excluded from version control (.gitignore).
+
+3. Start the application:
+   - Open and run `app/AgentChat.m` in MATLAB. The UI creates an agent.Agent instance internally.
+
+> **Note**: The original App Designer file (.mlapp) has been converted to a standard MATLAB file (.m) for better compatibility. The keyboard shortcuts for sending messages have been removed to address compatibility issues with some MATLAB versions. Use the Send button to submit your requests.
+
+## API Key Security
+
+For secure handling of API keys, follow these best practices:
+
+1. **Environment Variables**: Set API keys as environment variables (most secure method)
+   ```
+   # Windows
+   set GEMINI_API_KEY=your_api_key_here
+   
+   # macOS/Linux
+   export GEMINI_API_KEY=your_api_key_here
+   ```
+
+2. **Settings File**: Use the provided `llm_settings.m` script which will:
+   - Prompt for your API key
+   - Store it in a .mat file that should be added to .gitignore
+   - Clear the key from workspace after saving
+
+3. **Never commit API keys**: Ensure .gitignore includes:
+   ```
+   # API key settings
+   llm_settings.mat
+   ```
+
+4. **Rotate compromised keys**: If you accidentally commit an API key:
+   - Immediately revoke and regenerate the key
+   - Clear git history or use git-filter-branch to remove sensitive data
+   - Consider using git secrets or pre-commit hooks to prevent future leaks
 
 ## Running Tests
 
@@ -92,6 +124,21 @@ This format includes:
 - A base64-encoded PNG snapshot of any Simulink model
 - A log of the tool calls that were executed
 
+## Troubleshooting
+
+If you encounter issues:
+
+1. **App cannot be found**: Make sure you are using the `.m` file version (`app/AgentChat.m`) rather than the `.mlapp` file.
+
+2. **Keyboard shortcuts not working**: Use the Send button instead of keyboard shortcuts. The KeyPressFcn property has been removed for compatibility with various MATLAB versions.
+
+3. **API Key issues**: 
+   - Follow the API Key Security guidelines above to properly set up your key
+   - Verify the environment variable or settings file is correctly configured
+   - Check the MATLAB console for any warnings about missing API keys
+
+4. **Missing dependencies**: Some functionality may require specific MATLAB toolboxes. Ensure you have Simulink and any other required toolboxes installed.
+
 ## Runtime Flow
 
 The ReAct loop in Agent.m follows this pattern:
@@ -112,3 +159,4 @@ The ReAct loop in Agent.m follows this pattern:
 - All tool calls are wrapped in try/catch with error redaction
 - Model size limits can be enforced to prevent resource issues
 - Simulink.BlockDiagram.validate ensures model integrity before simulation
+- Never hardcode API keys or sensitive information in source code

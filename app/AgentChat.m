@@ -295,15 +295,6 @@ classdef AgentChat < matlab.apps.AppBase
             % Update status
             app.StatusLabel.Text = 'Chat history cleared';
         end
-        
-        function InputTextAreaKeyPress(app, event)
-            % Execute on key press in input text area
-            
-            % Submit on Ctrl+Enter or Shift+Enter
-            if (strcmp(event.Modifier, 'control') || strcmp(event.Modifier, 'shift')) && strcmp(event.Key, 'return')
-                app.SendButtonPushed();
-            end
-        end
     end
 
     % Component initialization
@@ -330,7 +321,6 @@ classdef AgentChat < matlab.apps.AppBase
             % Create input text area
             app.InputTextArea = uitextarea(app.ChatPanel);
             app.InputTextArea.Position = [10, 40, 300, 50];
-            app.InputTextArea.KeyPressFcn = createCallbackFcn(app, @InputTextAreaKeyPress, true);
             
             % Create send button
             app.SendButton = uibutton(app.ChatPanel, 'push');

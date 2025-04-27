@@ -33,9 +33,9 @@ end
 function apiConfig = getAPIConfig()
     % Get API configuration - either from environment or from settings file
     
-    % Default to Gemini
+    % Default to Gemini but with empty API key
     apiConfig = struct('provider', 'gemini', ...
-                      'apiKey', 'AIzaSyArhg4YI1-9EK-Rj2CC8Hs12d-tIFb9Wco', ...
+                      'apiKey', '', ...
                       'model', 'gemini-pro', ...
                       'endpoint', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent');
     
@@ -86,6 +86,9 @@ function apiConfig = getAPIConfig()
     if strcmpi(apiConfig.provider, 'openai') && isempty(apiConfig.apiKey)
         warning(['OpenAI API key not found. Set the OPENAI_API_KEY environment variable ', ...
                 'or configure it in the settings file.']);
+    elseif strcmpi(apiConfig.provider, 'gemini') && isempty(apiConfig.apiKey)
+        warning(['Gemini API key not found. Set the GEMINI_API_KEY environment variable ', ...
+                'or run the llm_settings.m script to configure it.']);
     end
 end
 
