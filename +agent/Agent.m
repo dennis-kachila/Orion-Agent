@@ -8,6 +8,7 @@ classdef Agent < handle
         llmInterface % Interface to the LLM
         toolLog % Maintains a log of all tool calls made
         modifiedFiles % Tracks files that have been created or modified
+        pendingRunCodeTool % Stores a run_code tool to execute after primary tool
     end
     
     methods
@@ -18,6 +19,7 @@ classdef Agent < handle
             obj.llmInterface = @llm.callGPT;
             obj.toolLog = {};
             obj.modifiedFiles = {};
+            obj.pendingRunCodeTool = struct();
             
             % Add system message to history
             try
@@ -79,13 +81,107 @@ classdef Agent < handle
                         error('Invalid LLM response format. Expected fields "tool" and "args".');
                     end
                     
+                    % Special handling for complex response formats
+                    if isfield(toolCall, 'log') && ~isempty(toolCall.log)
+                        fprintf('Found additional tool calls in log field\n');
+                        
+                        % Extract code content from nested run_code if needed
+                        if strcmp(toolCall.tool, 'open_editor') && ...
+                           ~isfield(toolCall.args, 'content')
+                           
+                            fprintf('open_editor missing content field, looking in log\n');
+                            
+                            % Determine if log is a cell array or struct array
+                            if iscell(toolCall.log)
+                                logArray = toolCall.log;
+                                fprintf('Log is a cell array with %d items\n', length(logArray));
+                            else
+                                % Convert struct array to cell array if needed
+                                logArray = num2cell(toolCall.log);
+                                fprintf('Log is a struct array with %d items\n', length(logArray));
+                            end
+                            
+                            % Look for run_code in log that might have the content
+                            for i = 1:length(logArray)
+                                try
+                                    logItem = logArray{i};
+                                    
+                                    % Debug the log item structure
+                                    fprintf('Examining log item %d: %s\n', i, jsonencode(logItem));
+                                    
+                                    if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
+                                       isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
+                                        
+                                        % Add the code content to the open_editor args
+                                        fprintf('Found code content in log run_code item: %s\n', logItem.args.codeStr);
+                                        toolCall.args.content = logItem.args.codeStr;
+                                        break;
+                                    end
+                                catch logErr
+                                    fprintf('Error processing log item %d: %s\n', i, logErr.message);
+                                end
+                            end
+                            
+                            % If still missing content, check if fileName has file extension
+                            if ~isfield(toolCall.args, 'content') && isfield(toolCall.args, 'fileName')
+                                fprintf('Still missing content, generating default template based on file type\n');
+                                [~, ~, fileExt] = fileparts(toolCall.args.fileName);
+                                
+                                % Create default content based on file extension
+                                if strcmpi(fileExt, '.m')
+                                    toolCall.args.content = sprintf('%% %s\n%% Auto-generated default file\n\ndisp(''Hello, this is a default MATLAB script'');\n', toolCall.args.fileName);
+                                    fprintf('Generated default MATLAB script content\n');
+                                else
+                                    toolCall.args.content = sprintf('% Default content for %s\n', toolCall.args.fileName);
+                                    fprintf('Generated generic default content\n');
+                                end
+                            end
+                        end
+                    end
+                    
                     % Record thought in history
                     thought = sprintf('I will use %s with arguments: %s', ...
                         toolCall.tool, jsonencode(toolCall.args));
                     obj.chatHistory(end+1) = struct('role', 'assistant', 'content', thought);
                     
-                    % Add to tool log
-                    obj.toolLog{end+1} = sprintf('%s(%s)', toolCall.tool, jsonencode(toolCall.args));
+                    % Store tool call for logging
+                    obj.toolLog{end+1} = struct('tool', toolCall.tool, 'args', toolCall.args);
+                    
+                    % Process additional log items if present (execute nested tool calls)
+                    if isfield(toolCall, 'log') && ~isempty(toolCall.log)
+                        fprintf('Processing additional tool calls in log array...\n');
+                        
+                        % Determine if log is a cell array or struct array
+                        if iscell(toolCall.log)
+                            logArray = toolCall.log;
+                        else
+                            % Convert struct array to cell array if needed
+                            logArray = num2cell(toolCall.log);
+                        end
+                        
+                        % Flag to track if we need to execute any nested tools
+                        hasRunCodeTool = false;
+                        runCodeItem = struct();
+                        
+                        % First identify if there are any run_code items
+                        for i = 1:length(logArray)
+                            try
+                                logItem = logArray{i};
+                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
+                                   isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
+                                    hasRunCodeTool = true;
+                                    runCodeItem = logItem;
+                                    fprintf('Found run_code tool to execute after primary tool\n');
+                                    break;
+                                end
+                            catch logErr
+                                fprintf('Error processing log item %d: %s\n', i, logErr.message);
+                            end
+                        end
+                        
+                        % Save the run_code tool for execution after the primary tool
+                        obj.pendingRunCodeTool = runCodeItem;
+                    end
                     
                     % Dispatch to appropriate tool
                     fprintf('Executing tool: %s\n', toolCall.tool);
@@ -94,30 +190,51 @@ classdef Agent < handle
                     if strcmp(toolCall.tool, 'open_editor') && isfield(toolCall.args, 'fileName') && isfield(toolCall.args, 'content')
                         % Force files to be created in the workspace folder
                         [~, filename, ext] = fileparts(toolCall.args.fileName);
+                        
+                        % If no extension provided, assume .m for MATLAB files
                         if isempty(ext)
-                            ext = '.m'; % Default to .m extension for scripts
+                            ext = '.m';
                         end
                         
-                        % Build full path in workspace folder
                         fullFilePath = fullfile(workspaceFolder, [filename, ext]);
                         fprintf('Creating file in workspace: %s\n', fullFilePath);
                         
                         % Write content directly to file
                         try
+                            % Make sure the directory exists
+                            if ~exist(workspaceFolder, 'dir')
+                                fprintf('Creating directory: %s\n', workspaceFolder);
+                                [mkdirSuccess, mkdirMsg] = mkdir(workspaceFolder);
+                                if ~mkdirSuccess
+                                    fprintf('Warning: Could not create directory: %s\n', mkdirMsg);
+                                end
+                            end
+                            
+                            % Write file with robust error handling
                             fid = fopen(fullFilePath, 'w');
                             if fid == -1
+                                % Try to diagnose the file access issue
+                                [folderExists, ~, ~] = exist(workspaceFolder, 'dir');
+                                [fileExists, ~, ~] = exist(fullFilePath, 'file');
+                                fprintf('Diagnostic: Folder exists: %d, File exists: %d\n', folderExists, fileExists);
+                                
                                 error('Could not open file for writing: %s', fullFilePath);
                             end
-                            fprintf(fid, '%s', toolCall.args.content);
+                            
+                            fprintf('File opened successfully, writing content (%d characters)\n', length(toolCall.args.content));
+                            bytesWritten = fprintf(fid, '%s', toolCall.args.content);
+                            fprintf('Wrote %d bytes to file\n', bytesWritten);
+                            
                             fclose(fid);
                             
                             % Verify file was created
                             if exist(fullFilePath, 'file')
                                 fprintf('File successfully created: %s\n', fullFilePath);
                                 
-                                % Add to modified files list
+                                % Add to modified files list if not already there
                                 if ~ismember(fullFilePath, obj.modifiedFiles)
                                     obj.modifiedFiles{end+1} = fullFilePath;
+                                    fprintf('Added file to modified files list\n');
                                 end
                                 
                                 % Create successful result struct
@@ -135,13 +252,59 @@ classdef Agent < handle
                                     fprintf('Note: Could not open file in editor: %s\n', editorME.message);
                                 end
                                 
+                                % Set this directly to make sure file creation works
+                                fprintf('Setting isDone to true after successful file creation\n');
                                 isDone = true;
+                                
+                                % Execute pending run_code tool if present
+                                if ~isempty(fieldnames(obj.pendingRunCodeTool)) && ...
+                                   isfield(obj.pendingRunCodeTool, 'tool') && ...
+                                   strcmp(obj.pendingRunCodeTool.tool, 'run_code') && ...
+                                   isfield(obj.pendingRunCodeTool, 'args') && ...
+                                   isfield(obj.pendingRunCodeTool.args, 'codeStr')
+                                    
+                                    fprintf('Executing pending run_code tool...\n');
+                                    runCodeArgs = obj.pendingRunCodeTool.args;
+                                    
+                                    try
+                                        % Call the run_code tool directly
+                                        fprintf('Running code: %s\n', runCodeArgs.codeStr);
+                                        runResult = tools.run_code(runCodeArgs.codeStr);
+                                        
+                                        % Log the result
+                                        if isfield(runResult, 'status') && strcmp(runResult.status, 'success')
+                                            fprintf('Code execution successful:\n%s\n', runResult.output);
+                                            
+                                            % Add to tool log
+                                            obj.toolLog{end+1} = struct('tool', 'run_code', ...
+                                                                     'args', runCodeArgs, ...
+                                                                     'result', runResult);
+                                        else
+                                            fprintf('Code execution failed: %s\n', runResult.error);
+                                        end
+                                    catch runCodeErr
+                                        fprintf('Error executing run_code: %s\n', runCodeErr.message);
+                                    end
+                                    
+                                    % Clear the pending tool
+                                    obj.pendingRunCodeTool = struct();
+                                end
                             else
-                                error('File creation failed for unknown reason');
+                                fprintf('ERROR: File does not exist after writing: %s\n', fullFilePath);
+                                error('File creation verification failed - file does not exist after writing to it');
                             end
                         catch fileWriteError
                             fprintf('Error writing file: %s\n', fileWriteError.message);
+                            % Include stack trace for debugging
+                            if ~isempty(fileWriteError.stack)
+                                fprintf('Stack trace:\n');
+                                for i = 1:min(3, length(fileWriteError.stack))
+                                    fprintf('  %s (line %d)\n', fileWriteError.stack(i).name, fileWriteError.stack(i).line);
+                                end
+                            end
+                            
                             % Will continue to normal tool dispatch as fallback
+                            fprintf('Falling back to normal tool dispatch...\n');
                             [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
                         end
                     else
@@ -262,7 +425,61 @@ classdef Agent < handle
             return;
         end
         
-        function errorMsg = simpleRedactErrors(obj, ME)
+        function processHistory(obj, history)
+            % Process history to output a formatted cell array for display
+            if isempty(history)
+                return;
+            end
+            
+            formattedHistory = cell(length(history), 1);
+            for i = 1:length(history)
+                message = history{i};
+                if isfield(message, 'role') && isfield(message, 'content')
+                    formattedHistory{i} = sprintf('%s: %s', message.role, message.content);
+                else
+                    % Handle unexpected message format
+                    formattedHistory{i} = jsonencode(message);
+                end
+            end
+            
+            return;
+        end
+        
+        function result = generateSystemMessage(~)
+            % Generate the system message for the LLM
+            try
+                result = llm.promptTemplates.getSystemPrompt();
+            catch ME
+                warning('Agent:SystemPromptError', ...
+                    'Could not load system prompt: %s. Using fallback.', ME.message);
+                result = 'You are Orion, a helpful MATLAB and Simulink assistant.';
+            end
+        end
+        
+        function clearHistory(obj)
+            % Clear chat history except for the system message
+            if ~isempty(obj.chatHistory) && length(obj.chatHistory) > 0
+                systemMsg = obj.chatHistory{1};  % Keep system message
+                obj.chatHistory = {systemMsg};   % Reset history with system message
+            end
+        end
+        
+        function history = getHistory(obj)
+            % Return current conversation history
+            history = obj.chatHistory;
+        end
+        
+        function log = getToolLog(obj)
+            % Get the log of tool calls made
+            log = obj.toolLog;
+        end
+        
+        function files = getModifiedFiles(obj)
+            % Get the list of files that were created or modified
+            files = obj.modifiedFiles;
+        end
+        
+        function errorMsg = simpleRedactErrors(~, ME)
             % SIMPLEREDACTERRORS - Basic error redacting function
             % This function replaces the dependency on agent.utils.safeRedactErrors
             % with a direct implementation to avoid namespace issues
@@ -297,29 +514,6 @@ classdef Agent < handle
                 % If error handling fails, return a simple error message
                 errorMsg = sprintf('Error: %s', ME.message);
             end
-        end
-        
-        function history = getHistory(obj)
-            % Return current conversation history
-            history = obj.chatHistory;
-        end
-        
-        function clearHistory(obj)
-            % Clear conversation history except system prompt
-            systemPrompt = obj.chatHistory(1);
-            obj.chatHistory = systemPrompt;
-            obj.toolLog = {};
-            obj.modifiedFiles = {};
-        end
-        
-        function log = getToolLog(obj)
-            % Get the log of tool calls made
-            log = obj.toolLog;
-        end
-        
-        function files = getModifiedFiles(obj)
-            % Get the list of files that were created or modified
-            files = obj.modifiedFiles;
         end
     end
 end

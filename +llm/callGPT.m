@@ -43,7 +43,7 @@ function response = callGPT(prompt)
     end
     
     % Rate limiting constants - ensure at least this many seconds between calls
-    MIN_DELAY_SECONDS = 10; % Minimum delay between API calls to avoid rate limits
+    MIN_DELAY_SECONDS = 30; % Minimum delay between API calls to avoid rate limits
     
     % Check if we've exceeded our API call limit
     if apiCallCount >= MAX_API_CALLS && ~debugMode
@@ -55,18 +55,7 @@ function response = callGPT(prompt)
         fprintf('DEBUG MODE: Returning predefined response for development\n');
         
         % Get the user's request from the prompt to customize the response
-        userQuery = '';
-        if isstruct(prompt) && isfield(prompt, 'messages')
-            % Look for the latest user message
-            for i = numel(prompt.messages):-1:1
-                if isfield(prompt.messages{i}, 'role') && ...
-                   strcmp(prompt.messages{i}.role, 'user') && ...
-                   isfield(prompt.messages{i}, 'content')
-                    userQuery = lower(prompt.messages{i}.content);
-                    break;
-                end
-            end
-        end
+        userQuery = extractUserQuery(prompt);
         
         % Provide appropriate debug responses based on the request
         if contains(userQuery, 'hello world') || contains(userQuery, 'print hello')
@@ -113,40 +102,80 @@ function response = callGPT(prompt)
             % Call local Llama API
             response = callLocalLLM(prompt, apiConfig);
         elseif strcmpi(apiConfig.provider, 'gemini')
-            % Call Google Gemini API
-            response = callGemini(prompt, apiConfig);
+            % Call Gemini API
+            fprintf('Calling Gemini API...\n');
+            
+            % Prepare request endpoint with API key
+            endpoint = [apiConfig.endpoint, '?key=', apiConfig.apiKey];
+            
+            % Redact API key in logs for security
+            endpointDisplay = regexprep(endpoint, '(key=)([^&]+)', '$1[REDACTED]');
+            fprintf('Full Gemini endpoint: %s\n', endpointDisplay);
+            
+            % Create web options with increased timeout only
+            options = weboptions('ContentType', 'json', ...
+                               'Timeout', 60);  % Increased timeout to 60 seconds
+            
+            response = callGemini(prompt, endpoint, options);
         else
             error('Unknown LLM provider: %s', apiConfig.provider);
         end
         
         fprintf('API call successful! (%d/%d calls used)\n', apiCallCount, MAX_API_CALLS);
         
-        % Show a preview of the response
-        if length(response) > 100
-            responsePreview = [response(1:100), '...'];
-        else
-            responsePreview = response;
-        end
-        fprintf('Response preview: %s\n', responsePreview);
+        % % Show a preview of the response
+        % if length(response) > 100
+        %     responsePreview = [response(1:100), '...'];
+        % else
+        %     responsePreview = response;
+        % end
+        responsePreview = response; % Show the full response
+        %fprintf('Response preview: %s\n', responsePreview);
+        fprintf('Response in full: %s\n', responsePreview);
         
     catch ME
         % Handle connection errors with detailed debugging
         fprintf('ERROR calling LLM: %s\n', ME.message);
         
         if ~isempty(ME.stack)
-            fprintf('Error occurred in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+            % Show the first few stack frames
+            fprintf('Stack trace:\n');
+            for i = 1:min(3, length(ME.stack))
+                fprintf('  %s (line %d)\n', ME.stack(i).name, ME.stack(i).line);
+            end
         end
         
-        % If we hit rate limits, wait longer next time
-        if contains(ME.message, 'Too Many Requests') || contains(ME.message, '429')
-            fprintf('Rate limit exceeded. Increasing delay for next request.\n');
-            MIN_DELAY_SECONDS = MIN_DELAY_SECONDS * 2; % Double the delay
-            lastCallTime = datetime('now'); % Reset timer
+        % Increment API call count anyway to avoid excessive retries in case of persistent failures
+        apiCallCount = apiCallCount + 1;
+        
+        % Check if this is a timeout or connection error
+        if contains(lower(ME.message), 'timeout') || contains(lower(ME.message), 'connection')
+            fprintf('Network issue detected. You may want to check your internet connection.\n');
+            fprintf('Consider the following troubleshooting steps:\n');
+            fprintf('1. Check if your internet connection is stable\n');
+            fprintf('2. Verify if the API endpoint is accessible from your network\n');
+            fprintf('3. Try increasing the timeout value further in callGPT.m\n');
+            fprintf('4. Check if a proxy server is required for your network\n');
         end
         
-        % Create a default dummy response for development/debug
-        fprintf('Returning debug fallback response...\n');
-        response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); for i = 1:10, disp(i); end"}}';
+        fprintf('Switching to offline debug mode for this session.\n');
+        debugMode = true;  % Switch to debug mode for subsequent calls
+        
+        % Get the user's request from the prompt to customize the debug response
+        userQuery = extractUserQuery(prompt);
+        
+        % Provide appropriate debug responses based on the request
+        if contains(userQuery, 'hello world') || contains(userQuery, 'print hello')
+            fprintf('Returning debug fallback response for "hello world"...\n');
+            response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); disp(''Counting from 1 to 10:''); for i = 1:10, disp(i); end"}}';
+        elseif contains(userQuery, 'script') || contains(userQuery, 'create') || contains(userQuery, 'write')
+            fprintf('Returning debug fallback response for "create script"...\n');
+            scriptContent = sprintf('%%HELLO_WORLD - A simple script that prints hello world and counts\n\ndisp(''Hello World!'');\ndisp(''Counting from 1 to 10:'');\n\n%% Count from 1 to 10\nfor i = 1:10\n    disp(i);\nend');
+            response = sprintf('{"tool": "open_editor", "args": {"fileName": "hello_world.m", "content": "%s"}}', regexprep(scriptContent, '(["\])', '\\$1'));
+        else
+            fprintf('Returning general debug fallback response...\n');
+            response = '{\"tool\": \"run_code\", \"args\": {\"codeStr\": \"disp(''Hello World!''); for i = 1:10, disp(i); end\"}}';
+        end
     end
     
     fprintf('========================\n');
@@ -295,15 +324,8 @@ function response = callLocalLLM(prompt, apiConfig)
     end
 end
 
-function response = callGemini(prompt, apiConfig)
+function response = callGemini(prompt, endpoint, options)
     % Call Google Gemini API with the given prompt
-    
-    % Add API key to the endpoint URL
-    endpoint = [apiConfig.endpoint, '?key=', apiConfig.apiKey];
-    fprintf('Full Gemini endpoint: %s\n', endpoint);
-    
-    % Prepare request options
-    options = weboptions('ContentType', 'json');
     
     % Debug request structure
     fprintf('Preparing Gemini request...\n');
@@ -391,7 +413,12 @@ function response = callGemini(prompt, apiConfig)
                 end
                 
                 if isfield(part, 'text')
-                    response = part.text;
+                    rawText = part.text;
+                    
+                    % Clean up the response - remove markdown code formatting
+                    % Check for markdown code blocks (```json ... ```)
+                    response = cleanMarkdownCodeBlocks(rawText);
+                    
                     fprintf('Successfully extracted text from response\n');
                 else
                     if isstruct(part)
@@ -417,4 +444,91 @@ function response = callGemini(prompt, apiConfig)
             error('No candidates returned from Gemini API');
         end
     end
+end
+
+function userQuery = extractUserQuery(prompt)
+    % Helper function to extract the user query from various prompt formats
+    userQuery = '';
+    
+    if isstruct(prompt) && isfield(prompt, 'messages')
+        % Look for the latest user message
+        for i = numel(prompt.messages):-1:1
+            if isfield(prompt.messages{i}, 'role') && ...
+               strcmp(prompt.messages{i}.role, 'user') && ...
+               isfield(prompt.messages{i}, 'content')
+                userQuery = lower(prompt.messages{i}.content);
+                break;
+            end
+        end
+    elseif ischar(prompt) || isstring(prompt)
+        % If it's just a string, use the whole thing
+        userQuery = lower(char(prompt));
+    end
+end
+
+function cleanedText = cleanMarkdownCodeBlocks(text)
+    % Helper function to extract content from markdown code blocks
+    
+    % First, check if the text contains a markdown code block
+    if contains(text, '```')
+        % Find positions of code block markers
+        startPos = strfind(text, '```');
+        
+        if length(startPos) >= 2
+            % Extract content between the first pair of ``` markers
+            firstMarker = startPos(1);
+            secondMarker = startPos(2);
+            
+            % Find the end of the first line containing ```
+            lineEndPos = strfind(text(firstMarker:min(firstMarker+20, length(text))), newline);
+            if ~isempty(lineEndPos)
+                contentStart = firstMarker + lineEndPos(1);
+            else
+                % If no newline found, assume it's ```json followed by content
+                contentStart = firstMarker + 6; % Length of ```xxx is roughly 6 chars
+            end
+            
+            % Extract the content between markers
+            if contentStart < secondMarker
+                jsonContent = text(contentStart:secondMarker-1);
+                
+                % Trim whitespace
+                jsonContent = strtrim(jsonContent);
+                
+                % If valid JSON, return it
+                try
+                    % Test if it's valid JSON by attempting to decode it
+                    jsondecode(jsonContent);
+                    cleanedText = jsonContent;
+                    fprintf('Successfully extracted JSON from markdown code block\n');
+                    return;
+                catch
+                    fprintf('Extracted content is not valid JSON, using fallback\n');
+                end
+            end
+        end
+    end
+    
+    % If no valid JSON found in markdown blocks, try to find JSON directly
+    try
+        % Look for { which typically indicates the start of a JSON object
+        jsonStartPos = strfind(text, '{');
+        if ~isempty(jsonStartPos)
+            % Try to extract JSON starting from the first { character
+            possibleJson = text(jsonStartPos(1):end);
+            jsondecode(possibleJson); % Test if valid
+            cleanedText = possibleJson;
+            fprintf('Found JSON starting with { character\n');
+            return;
+        end
+    catch
+        % Not valid JSON
+    end
+    
+    % Fallback: remove markdown formatting but keep the content
+    % Replace ```xxx\n with nothing and ``` with nothing
+    cleanedText = regexprep(text, '```[^\n]*\n', '');
+    cleanedText = regexprep(cleanedText, '```', '');
+    
+    fprintf('Using plain text fallback (not valid JSON)\n');
 end
