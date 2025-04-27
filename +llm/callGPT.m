@@ -16,7 +16,13 @@ function response = callGPT(prompt)
     fprintf('Provider: %s\n', apiConfig.provider);
     fprintf('Model: %s\n', apiConfig.model);
     fprintf('Endpoint: %s\n', apiConfig.endpoint);
-    fprintf('Has API Key: %s\n', ~isempty(apiConfig.apiKey) ? 'Yes' : 'No');
+    
+    % Use proper if-else instead of ternary operator
+    if ~isempty(apiConfig.apiKey)
+        fprintf('Has API Key: %s\n', 'Yes');
+    else
+        fprintf('Has API Key: %s\n', 'No');
+    end
     
     % Debug mode - bypass actual API call and return a working response
     % Set to true to avoid API charges and rate limits
