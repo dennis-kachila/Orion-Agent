@@ -11,8 +11,8 @@ end
 settings = struct();
 settings.provider = 'gemini';  % Options: 'openai', 'gemini', 'local'
 settings.apiKey = apiKey;  % Never hardcode API keys in source code
-settings.model = 'gemini-pro';  % Model name 
-settings.endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+settings.model = 'gemini-1.5-pro';  % Updated model name 
+settings.endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
 
 % Save settings to MAT file
 save('llm_settings.mat', 'settings');

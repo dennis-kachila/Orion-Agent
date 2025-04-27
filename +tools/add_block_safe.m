@@ -31,7 +31,7 @@ function result = add_block_safe(modelName, blockType, position)
                     blocks = find_system('SearchDepth', 0, 'Name', blockType);
                     if ~isempty(blocks)
                         blockType = testPath;
-                        found = true;
+                        % Block found, update blockType
                         break;
                     end
                 catch
@@ -45,7 +45,7 @@ function result = add_block_safe(modelName, blockType, position)
                     blocks = find_system('SearchDepth', 0, 'Name', blockType);
                     if ~isempty(blocks)
                         blockType = char(blocks(1));
-                        found = true;
+                        % Block found, update blockType
                     end
                 catch
                     % If still not found, keep the original and let add_block handle the error

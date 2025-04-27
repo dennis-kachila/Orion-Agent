@@ -16,21 +16,24 @@ function response = callGPT(prompt)
     fprintf('Provider: %s\n', apiConfig.provider);
     fprintf('Model: %s\n', apiConfig.model);
     fprintf('Endpoint: %s\n', apiConfig.endpoint);
-    fprintf('Has API Key: %s\n', ~isempty(apiConfig.apiKey) ? 'Yes' : 'No');
+    if ~isempty(apiConfig.apiKey)
+        fprintf('Has API Key: Yes\n');
+    else
+        fprintf('Has API Key: No\n');
+    end
     
     % Debug mode - bypass actual API call and return a working response
     % Remove this in production or set debugMode = false
-    debugMode = true;
-    
-    if debugMode
-        fprintf('DEBUG MODE: Returning predefined response for development\n');
-        response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); for i = 1:10, disp(i); end"}}';
-        fprintf('Response: %s\n', response);
-        fprintf('========================\n');
-        return;
-    end
+    debugMode = true; % Set to true to enable debug mode for testing
     
     try
+        if debugMode
+            fprintf('DEBUG MODE: Returning predefined response for development\n');
+            response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); for i = 1:10, disp(i); end"}}';
+            fprintf('Response: %s\n', response);
+            fprintf('========================\n');
+        end
+
         fprintf('Attempting to call %s API...\n', apiConfig.provider);
         
         if strcmpi(apiConfig.provider, 'openai')
@@ -60,7 +63,7 @@ function response = callGPT(prompt)
         % Handle connection errors with detailed debugging
         fprintf('ERROR calling LLM: %s\n', ME.message);
         
-        if length(ME.stack) > 0
+        if ~isempty(ME.stack)
             fprintf('Error occurred in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
         end
         
@@ -114,7 +117,11 @@ function apiConfig = getAPIConfig()
             
             if isfield(settings, 'apiKey')
                 apiConfig.apiKey = settings.apiKey;
-                fprintf('API key from settings: %s\n', ~isempty(settings.apiKey) ? 'Present (not shown)' : 'Empty');
+                if ~isempty(settings.apiKey)
+                    fprintf('API key from settings: Present (not shown)\n');
+                else
+                    fprintf('API key from settings: Empty\n');
+                end
             end
             
             if isfield(settings, 'model')
@@ -134,7 +141,7 @@ function apiConfig = getAPIConfig()
             end
         end
     catch ME
-        warning('Failed to load LLM settings file: %s', ME.message);
+        warning('Failed to load LLM settings file: %s', '%s', ME.message);
     end
     
     % Validate config
@@ -233,18 +240,73 @@ function response = callGemini(prompt, apiConfig)
         % Collect all the parts
         allParts = {};
         
+        % Process each message
+        for i = 1:numel(messages)
+            if isfield(messages{i}, 'content')
+                fprintf('Message %d role: %s\n', i, messages{i}.role);
+                allParts{end+1} = struct('text', messages{i}.content);
+            end
+        end
+        
+        contents = struct('parts', {allParts});
+        
+        requestBody = struct('contents', contents, ...
+                           'generationConfig', struct('temperature', 0.7, ...
+                                                   'maxOutputTokens', 2048));
+    else
+        % Create a simple text request
+        if ischar(prompt) || isstring(prompt)
+            promptText = char(prompt);
+        else
+            promptText = 'Please assist with this MATLAB/Simulink task';
+        end
+        
+        fprintf('Using simple text prompt: %s\n', promptText(1:min(30, length(promptText))));
+        
+        requestBody = struct('contents', struct('parts', {{struct('text', promptText)}}), ...
+                          'generationConfig', struct('temperature', 0.7, ...
+                                                  'maxOutputTokens', 2048));
+    end
+    
+    % Show request body preview
+    requestJson = jsonencode(requestBody);
+    fprintf('Request JSON preview: %s...\n', requestJson(1:min(100, length(requestJson))));
+    
+    % Make the API call
+    fprintf('Sending request to Gemini API...\n');
+    responseData = webwrite(endpoint, requestBody, options);
+    
+    % Output response data structure for debugging
+    responseFields = fieldnames(responseData);
+    fprintf('Response fields: %s\n', strjoin(responseFields, ', '));
+    
+    % Extract the response text
+    if isfield(responseData, 'candidates') && ~isempty(responseData.candidates)
         candidate = responseData.candidates{1};
+        candidateFields = fieldnames(candidate);
+        fprintf('Candidate fields: %s\n', strjoin(candidateFields, ', '));
+        
         if isfield(candidate, 'content') && isfield(candidate.content, 'parts') && ~isempty(candidate.content.parts)
             part = candidate.content.parts{1};
+            fprintf('Found response part\n');
+            
             if isfield(part, 'text')
                 response = part.text;
+                fprintf('Successfully extracted text from response\n');
             else
+                partFields = fieldnames(part);
+                fprintf('Part fields: %s\n', strjoin(partFields, ', '));
                 error('Text field not found in Gemini response part');
             end
         else
             error('No content or parts found in Gemini response');
         end
     else
-        error('No candidates returned from Gemini API');
+        if isfield(responseData, 'error')
+            fprintf('Gemini API error: %s\n', responseData.error.message);
+            error('Gemini API error: %s', responseData.error.message);
+        else
+            error('No candidates returned from Gemini API');
+        end
     end
 end
