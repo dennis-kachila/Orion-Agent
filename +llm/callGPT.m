@@ -47,8 +47,7 @@ function response = callGPT(prompt)
     
     % Check if we've exceeded our API call limit
     if apiCallCount >= MAX_API_CALLS && ~debugMode
-        fprintf('API CALL LIMIT REACHED (%d/%d): Switching to debug mode to avoid excess charges\n', 
-            apiCallCount, MAX_API_CALLS);
+        fprintf('API CALL LIMIT REACHED (%d/%d): Switching to debug mode to avoid excess charges\n', apiCallCount, MAX_API_CALLS);
         debugMode = true;
     end
     
@@ -99,8 +98,7 @@ function response = callGPT(prompt)
     end
     
     try
-        fprintf('Attempting to call %s API (%d/%d calls used)...\n', 
-            apiConfig.provider, apiCallCount+1, MAX_API_CALLS);
+        fprintf('Attempting to call %s API (%d/%d calls used)...\n', apiConfig.provider, apiCallCount+1, MAX_API_CALLS);
         
         % Update the last call time
         lastCallTime = datetime('now');
@@ -121,8 +119,7 @@ function response = callGPT(prompt)
             error('Unknown LLM provider: %s', apiConfig.provider);
         end
         
-        fprintf('API call successful! (%d/%d calls used)\n', 
-            apiCallCount, MAX_API_CALLS);
+        fprintf('API call successful! (%d/%d calls used)\n', apiCallCount, MAX_API_CALLS);
         
         % Show a preview of the response
         if length(response) > 100
@@ -136,7 +133,7 @@ function response = callGPT(prompt)
         % Handle connection errors with detailed debugging
         fprintf('ERROR calling LLM: %s\n', ME.message);
         
-        if length(ME.stack) > 0
+        if ~isempty(ME.stack)
             fprintf('Error occurred in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
         end
         
@@ -322,14 +319,21 @@ function response = callGemini(prompt, apiConfig)
         
         % Process each message
         for i = 1:numel(messages)
-            if isfield(messages{i}, 'content')
-                fprintf('Message %d role: %s\n', i, messages{i}.role);
+            % Check if the current message is a struct and has the content field
+            if isstruct(messages{i}) && isfield(messages{i}, 'content')
+                % Display role for debugging
+                if isfield(messages{i}, 'role')
+                    fprintf('Message %d role: %s\n', i, messages{i}.role);
+                end
+                % Add this message's content as a part
                 allParts{end+1} = struct('text', messages{i}.content);
             end
         end
         
+        % Create the contents structure with the collected parts
         contents = struct('parts', {allParts});
         
+        % Create the final request body
         requestBody = struct('contents', contents, ...
                            'generationConfig', struct('temperature', 0.7, ...
                                                    'maxOutputTokens', 2048));
@@ -343,6 +347,7 @@ function response = callGemini(prompt, apiConfig)
         
         fprintf('Using simple text prompt: %s\n', promptText(1:min(30, length(promptText))));
         
+        % Create a simple request with just one part
         requestBody = struct('contents', struct('parts', {{struct('text', promptText)}}), ...
                           'generationConfig', struct('temperature', 0.7, ...
                                                   'maxOutputTokens', 2048));
@@ -362,30 +367,53 @@ function response = callGemini(prompt, apiConfig)
     
     % Extract the response text
     if isfield(responseData, 'candidates') && ~isempty(responseData.candidates)
-        candidate = responseData.candidates{1};
+        % Get the first candidate - careful with indexing, it could be a struct array
+        if isstruct(responseData.candidates) && length(responseData.candidates) >= 1
+            candidate = responseData.candidates(1);  % Use parentheses for struct arrays
+        else
+            candidate = responseData.candidates{1};  % Use braces for cell arrays
+        end
+        
         candidateFields = fieldnames(candidate);
         fprintf('Candidate fields: %s\n', strjoin(candidateFields, ', '));
         
-        if isfield(candidate, 'content') && isfield(candidate.content, 'parts') && ~isempty(candidate.content.parts)
-            part = candidate.content.parts{1};
-            fprintf('Found response part\n');
-            
-            if isfield(part, 'text')
-                response = part.text;
-                fprintf('Successfully extracted text from response\n');
+        if isfield(candidate, 'content')
+            if isfield(candidate.content, 'parts') 
+                % Check if parts is a cell array or struct array
+                if iscell(candidate.content.parts) && ~isempty(candidate.content.parts)
+                    part = candidate.content.parts{1};  % Use braces for cell arrays
+                    fprintf('Found response part (cell)\n');
+                elseif isstruct(candidate.content.parts) && length(candidate.content.parts) >= 1
+                    part = candidate.content.parts(1);  % Use parentheses for struct arrays
+                    fprintf('Found response part (struct)\n');
+                else
+                    error('Unexpected parts format in Gemini response');
+                end
+                
+                if isfield(part, 'text')
+                    response = part.text;
+                    fprintf('Successfully extracted text from response\n');
+                else
+                    if isstruct(part)
+                        partFields = fieldnames(part);
+                        fprintf('Part fields: %s\n', strjoin(partFields, ', '));
+                    else
+                        fprintf('Part is not a struct: %s\n', class(part));
+                    end
+                    error('Text field not found in Gemini response part');
+                end
             else
-                partFields = fieldnames(part);
-                fprintf('Part fields: %s\n', strjoin(partFields, ', '));
-                error('Text field not found in Gemini response part');
+                error('No parts field found in Gemini response content');
             end
         else
-            error('No content or parts found in Gemini response');
+            error('No content field found in Gemini response candidate');
         end
     else
         if isfield(responseData, 'error')
             fprintf('Gemini API error: %s\n', responseData.error.message);
             error('Gemini API error: %s', responseData.error.message);
         else
+            fprintf('Response data: %s\n', jsonencode(responseData));
             error('No candidates returned from Gemini API');
         end
     end

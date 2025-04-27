@@ -20,7 +20,11 @@ function result = open_editor(fileName, content)
         
         % Check if file exists
         fileExists = exist(fileName, 'file');
-        fprintf('File exists: %s\n', fileExists ? 'Yes' : 'No');
+        if fileExists
+            fprintf('File exists: Yes\n');
+        else
+            fprintf('File exists: No\n');
+        end
         
         % Create directory if needed
         [fileDir, ~, ~] = fileparts(fileName);
