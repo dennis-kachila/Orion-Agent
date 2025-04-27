@@ -20,8 +20,15 @@ classdef Agent < handle
             obj.modifiedFiles = {};
             
             % Add system message to history
-            systemPrompt = llm.promptTemplates.getSystemPrompt();
-            obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
+            try
+                % Use fully qualified path to avoid namespace issues
+                systemPrompt = llm.promptTemplates.getSystemPrompt();
+                obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
+            catch ME
+                warning(ME.identifier, '%s', ME.message);
+                % Use a simple default prompt if the system prompt can't be loaded
+                obj.chatHistory(end+1) = struct('role', 'system', 'content', 'You are Orion, an AI assistant for MATLAB and Simulink.');
+            end
         end
         
         function response = processUserInput(obj, userText)
@@ -116,7 +123,7 @@ classdef Agent < handle
                     
                 catch ME
                     % Handle errors
-                    errorMsg = agent.utils.redactErrors(ME);
+                    errorMsg = agent.utils.safeRedactErrors(ME);
                     obj.chatHistory(end+1) = struct('role', 'system', 'content', ...
                         sprintf('Error: %s', errorMsg));
                     

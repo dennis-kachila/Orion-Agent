@@ -90,8 +90,16 @@ classdef promptTemplates
                 '}\n\n'];
             
             % Combine system prompt with tools description
-            systemPrompt = promptTemplates.getSystemPrompt();
-            systemPrompt = [systemPrompt, '\n\n', toolsText];
+            try
+                % Use fully qualified path to avoid namespace issues
+                systemPrompt = llm.promptTemplates.getSystemPrompt();
+                systemPrompt = [systemPrompt, '\n\n', toolsText];
+            catch ME
+                warning('MATLAB:NamespaceConflict', 'Error getting system prompt: %s', ME.message);
+                % Use a simple default if the method can't be called directly
+                systemPrompt = 'You are Orion, an AI assistant for MATLAB and Simulink.\n\n';
+                systemPrompt = [systemPrompt, toolsText];
+            end
             
             % Update first message or add if not present
             messages = {};

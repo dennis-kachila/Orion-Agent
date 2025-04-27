@@ -105,12 +105,12 @@ classdef ToolBox < handle
                     
                 catch ME
                     % Handle tool execution errors
-                    errorMsg = agent.utils.redactErrors(ME);
+                    errorMsg = agent.utils.safeRedactErrors(ME);
                     result = struct('error', errorMsg);
                 end
             catch ME
-                % Handle dispatch errors
-                errorMsg = agent.utils.redactErrors(ME);
+                % Handle errors in tool dispatch
+                errorMsg = agent.utils.safeRedactErrors(ME);
                 result = struct('error', errorMsg);
             end
         end
