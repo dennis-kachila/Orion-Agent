@@ -27,7 +27,7 @@ classdef Agent < handle
             catch ME
                 warning(ME.identifier, '%s', ME.message);
                 % Use a simple default prompt if the system prompt can't be loaded
-                obj.chatHistory(end+1) = struct('role', 'system', 'content', 'You are Orion, an AI assistant for MATLAB and Simulink.');
+                obj.chatHistory(end+1) = struct('role', 'system', 'content', 'You are Orion, an AI Agent for MATLAB and Simulink.');
             end
         end
         
@@ -51,6 +51,13 @@ classdef Agent < handle
             
             % Flag to track if we've already generated a successful response
             successfulResponse = false;
+            
+            % Create a workspace folder for files if it doesn't exist
+            workspaceFolder = fullfile(pwd, 'orion_workspace');
+            if ~exist(workspaceFolder, 'dir')
+                fprintf('Creating workspace folder: %s\n', workspaceFolder);
+                mkdir(workspaceFolder);
+            end
             
             % Display status to command window
             fprintf('Processing request: "%s"\n', userText);
@@ -82,7 +89,65 @@ classdef Agent < handle
                     
                     % Dispatch to appropriate tool
                     fprintf('Executing tool: %s\n', toolCall.tool);
-                    [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                    
+                    % Special handling for open_editor to ensure file creation works
+                    if strcmp(toolCall.tool, 'open_editor') && isfield(toolCall.args, 'fileName') && isfield(toolCall.args, 'content')
+                        % Force files to be created in the workspace folder
+                        [~, filename, ext] = fileparts(toolCall.args.fileName);
+                        if isempty(ext)
+                            ext = '.m'; % Default to .m extension for scripts
+                        end
+                        
+                        % Build full path in workspace folder
+                        fullFilePath = fullfile(workspaceFolder, [filename, ext]);
+                        fprintf('Creating file in workspace: %s\n', fullFilePath);
+                        
+                        % Write content directly to file
+                        try
+                            fid = fopen(fullFilePath, 'w');
+                            if fid == -1
+                                error('Could not open file for writing: %s', fullFilePath);
+                            end
+                            fprintf(fid, '%s', toolCall.args.content);
+                            fclose(fid);
+                            
+                            % Verify file was created
+                            if exist(fullFilePath, 'file')
+                                fprintf('File successfully created: %s\n', fullFilePath);
+                                
+                                % Add to modified files list
+                                if ~ismember(fullFilePath, obj.modifiedFiles)
+                                    obj.modifiedFiles{end+1} = fullFilePath;
+                                end
+                                
+                                % Create successful result struct
+                                result = struct('status', 'success', ...
+                                               'fileName', fullFilePath, ...
+                                               'documentInfo', struct('path', fullFilePath, ...
+                                                                     'editorStatus', 'File created successfully'));
+                                                                     
+                                % Now try to open in editor (but don't fail if this doesn't work)
+                                try
+                                    document = matlab.desktop.editor.openDocument(fullFilePath);
+                                    fprintf('File opened in editor\n');
+                                    result.documentInfo.editorStatus = 'File created and opened in editor';
+                                catch editorME
+                                    fprintf('Note: Could not open file in editor: %s\n', editorME.message);
+                                end
+                                
+                                isDone = true;
+                            else
+                                error('File creation failed for unknown reason');
+                            end
+                        catch fileWriteError
+                            fprintf('Error writing file: %s\n', fileWriteError.message);
+                            % Will continue to normal tool dispatch as fallback
+                            [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                        end
+                    else
+                        % Normal tool dispatch for other tools
+                        [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                    end
                     
                     % For debug mode: Any run_code or first tool call is considered complete
                     if iterCount == 1 || strcmp(toolCall.tool, 'run_code')

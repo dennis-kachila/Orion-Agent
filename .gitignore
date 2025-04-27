@@ -23,3 +23,6 @@ set_api_key.bat
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# add orion_workspace to gitignore
+orion_workspace/

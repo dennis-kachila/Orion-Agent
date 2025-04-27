@@ -24,9 +24,17 @@ function response = callGPT(prompt)
         fprintf('Has API Key: %s\n', 'No');
     end
     
-    % Debug mode - bypass actual API call and return a working response
-    % Set to true to avoid API charges and rate limits
-    debugMode = true;
+    % API call counter for rate limiting
+    persistent apiCallCount;
+    if isempty(apiCallCount)
+        apiCallCount = 0;
+    end
+    
+    % Max API calls allowed per session (strict limit)
+    MAX_API_CALLS = 3;
+    
+    % Debug mode - set to false to make actual API calls
+    debugMode = false;
     
     % Keep track of API call times for rate limiting
     persistent lastCallTime;
@@ -34,8 +42,15 @@ function response = callGPT(prompt)
         lastCallTime = datetime('now') - hours(1); % Initialize with past time
     end
     
-    % Rate limiting constants
+    % Rate limiting constants - ensure at least this many seconds between calls
     MIN_DELAY_SECONDS = 10; % Minimum delay between API calls to avoid rate limits
+    
+    % Check if we've exceeded our API call limit
+    if apiCallCount >= MAX_API_CALLS && ~debugMode
+        fprintf('API CALL LIMIT REACHED (%d/%d): Switching to debug mode to avoid excess charges\n', 
+            apiCallCount, MAX_API_CALLS);
+        debugMode = true;
+    end
     
     if debugMode
         fprintf('DEBUG MODE: Returning predefined response for development\n');
@@ -84,10 +99,14 @@ function response = callGPT(prompt)
     end
     
     try
-        fprintf('Attempting to call %s API...\n', apiConfig.provider);
+        fprintf('Attempting to call %s API (%d/%d calls used)...\n', 
+            apiConfig.provider, apiCallCount+1, MAX_API_CALLS);
         
         % Update the last call time
         lastCallTime = datetime('now');
+        
+        % Increment API call counter
+        apiCallCount = apiCallCount + 1;
         
         if strcmpi(apiConfig.provider, 'openai')
             % Call OpenAI API
@@ -102,7 +121,8 @@ function response = callGPT(prompt)
             error('Unknown LLM provider: %s', apiConfig.provider);
         end
         
-        fprintf('API call successful!\n');
+        fprintf('API call successful! (%d/%d calls used)\n', 
+            apiCallCount, MAX_API_CALLS);
         
         % Show a preview of the response
         if length(response) > 100
