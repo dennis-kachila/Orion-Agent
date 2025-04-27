@@ -1,9 +1,10 @@
-function result = open_editor(fileName)
+function result = open_editor(fileName, content)
     % OPEN_EDITOR Opens the MATLAB editor with the specified file
     % Wrapper around matlab.desktop.editor.openDocument
     %
     % Input:
     %   fileName - Path to the file to open in the editor
+    %   content - (Optional) Content to write to the file
     %
     % Output:
     %   result - Structure containing document object and status
@@ -12,20 +13,35 @@ function result = open_editor(fileName)
         % Check if file exists
         fileExists = exist(fileName, 'file');
         
+        % Create directory if needed
+        [fileDir, ~, ~] = fileparts(fileName);
+        if ~exist(fileDir, 'dir') && ~isempty(fileDir)
+            mkdir(fileDir);
+        end
+        
+        % Write content to file if provided
+        if nargin > 1 && ~isempty(content)
+            % Write the content to the file
+            fid = fopen(fileName, 'w');
+            if fid == -1
+                error('Could not open file for writing: %s', fileName);
+            end
+            fprintf(fid, '%s', content);
+            fclose(fid);
+            fileExists = true;
+            status = 'Content written to file';
+        end
+        
         % Open or create the file
         if fileExists
             document = matlab.desktop.editor.openDocument(fileName);
-            status = 'Opened existing file';
-        else
-            % Create an empty file
-            [fileDir, ~, ~] = fileparts(fileName);
-            
-            % Create directory if it doesn't exist
-            if ~exist(fileDir, 'dir') && ~isempty(fileDir)
-                mkdir(fileDir);
+            if nargin <= 1 || isempty(content)
+                status = 'Opened existing file';
+            else
+                status = 'Opened file with new content';
             end
-            
-            % Create empty file and open
+        else
+            % Create an empty file and open
             fid = fopen(fileName, 'w');
             fclose(fid);
             
