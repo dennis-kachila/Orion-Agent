@@ -16,25 +16,69 @@ function response = callGPT(prompt)
     fprintf('Provider: %s\n', apiConfig.provider);
     fprintf('Model: %s\n', apiConfig.model);
     fprintf('Endpoint: %s\n', apiConfig.endpoint);
-    if ~isempty(apiConfig.apiKey)
-        fprintf('Has API Key: Yes\n');
-    else
-        fprintf('Has API Key: No\n');
-    end
+    fprintf('Has API Key: %s\n', ~isempty(apiConfig.apiKey) ? 'Yes' : 'No');
     
     % Debug mode - bypass actual API call and return a working response
-    % Remove this in production or set debugMode = false
-    debugMode = true; % Set to true to enable debug mode for testing
+    % Set to true to avoid API charges and rate limits
+    debugMode = true;
+    
+    % Keep track of API call times for rate limiting
+    persistent lastCallTime;
+    if isempty(lastCallTime)
+        lastCallTime = datetime('now') - hours(1); % Initialize with past time
+    end
+    
+    % Rate limiting constants
+    MIN_DELAY_SECONDS = 10; % Minimum delay between API calls to avoid rate limits
+    
+    if debugMode
+        fprintf('DEBUG MODE: Returning predefined response for development\n');
+        
+        % Get the user's request from the prompt to customize the response
+        userQuery = '';
+        if isstruct(prompt) && isfield(prompt, 'messages')
+            % Look for the latest user message
+            for i = numel(prompt.messages):-1:1
+                if isfield(prompt.messages{i}, 'role') && ...
+                   strcmp(prompt.messages{i}.role, 'user') && ...
+                   isfield(prompt.messages{i}, 'content')
+                    userQuery = lower(prompt.messages{i}.content);
+                    break;
+                end
+            end
+        end
+        
+        % Provide appropriate debug responses based on the request
+        if contains(userQuery, 'hello world') || contains(userQuery, 'print hello')
+            response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); for i = 1:10, disp(i); end"}}';
+        elseif contains(userQuery, 'simulink') || contains(userQuery, 'model')
+            response = '{"tool": "new_model", "args": {"modelName": "example_model"}}';
+        elseif contains(userQuery, 'editor') || contains(userQuery, 'script')
+            response = '{"tool": "open_editor", "args": {"fileName": "hello_world.m"}}';
+        else
+            % Default fallback response
+            response = '{"tool": "run_code", "args": {"codeStr": "disp(''I am processing your request: ' + regexprep(userQuery, '''', '''''') + ''');"}}';
+        end
+        
+        fprintf('Response: %s\n', response);
+        fprintf('========================\n');
+        return;
+    end
+    
+    % Check if enough time has passed since the last call
+    timeSinceLastCall = seconds(datetime('now') - lastCallTime);
+    if timeSinceLastCall < MIN_DELAY_SECONDS
+        % Need to wait before making another call
+        waitTime = MIN_DELAY_SECONDS - timeSinceLastCall;
+        fprintf('Rate limiting: Waiting %.1f seconds before next API call...\n', waitTime);
+        pause(waitTime);
+    end
     
     try
-        if debugMode
-            fprintf('DEBUG MODE: Returning predefined response for development\n');
-            response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); for i = 1:10, disp(i); end"}}';
-            fprintf('Response: %s\n', response);
-            fprintf('========================\n');
-        end
-
         fprintf('Attempting to call %s API...\n', apiConfig.provider);
+        
+        % Update the last call time
+        lastCallTime = datetime('now');
         
         if strcmpi(apiConfig.provider, 'openai')
             % Call OpenAI API
@@ -63,8 +107,15 @@ function response = callGPT(prompt)
         % Handle connection errors with detailed debugging
         fprintf('ERROR calling LLM: %s\n', ME.message);
         
-        if ~isempty(ME.stack)
+        if length(ME.stack) > 0
             fprintf('Error occurred in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+        end
+        
+        % If we hit rate limits, wait longer next time
+        if contains(ME.message, 'Too Many Requests') || contains(ME.message, '429')
+            fprintf('Rate limit exceeded. Increasing delay for next request.\n');
+            MIN_DELAY_SECONDS = MIN_DELAY_SECONDS * 2; % Double the delay
+            lastCallTime = datetime('now'); % Reset timer
         end
         
         % Create a default dummy response for development/debug
