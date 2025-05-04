@@ -200,29 +200,48 @@ If you encounter issues:
    - Follow the API Key Security guidelines above to properly set up your key
    - Verify the environment variable or settings file is correctly configured
    - Check the MATLAB console for any warnings about missing API keys
+   - If you recently changed API providers, ensure the corresponding environment variable is set
 
 4. **Missing dependencies**: Some functionality may require specific MATLAB toolboxes. Ensure you have Simulink and any other required toolboxes installed.
 
 5. **@agent Continue not working**: Make sure the agent has a previous conversation to continue. This command cannot be used as the first interaction.
 
+6. **UI display issues**: If the interface appears distorted or buttons are misaligned:
+   - Try resizing the application window
+   - Ensure your MATLAB display scaling settings match your system settings
+   - The latest UI improvements should resolve most display issues on various screen resolutions
+
+7. **Error messages not helpful**: Recent improvements now provide more descriptive error messages and include suggestions for resolving common issues.
+
 ## Runtime Flow
 
-The ReAct loop in Agent.m follows this pattern:
+The enhanced ReAct loop in Agent.m follows this pattern:
 1. PromptBuilder merges user text, truncated history, and tool list
 2. LLM generates a tool call with arguments in JSON format
 3. Dispatcher verifies the tool exists in ToolBox
 4. The tool is executed and returns a result (string, struct, PNG)
 5. Results are added to history and the loop continues until the task is complete
+6. Error handling now includes detailed context to help the LLM recover from failures
+
+## Recent Improvements
+
+- **Enhanced UI Design**: The interface has been completely redesigned for better usability and visual appeal
+- **Improved Error Handling**: Errors are now captured with context and provided to the LLM for more intelligent recovery
+- **Better Tool Organization**: Tools are now properly categorized into general, MATLAB, and Simulink domains
+- **Performance Optimizations**: Reduced latency in tool execution and LLM communication
+- **Visual Feedback**: Added visual indicators for long-running operations and tool execution status
 
 ## Extensibility
 
 - Add a new tool: drop a new .m file in the appropriate +tools/ subdirectory and add its handle in ToolBox.register()
 - Swap LLM: edit llm/callGPT.m (response must stay JSON-parseable)
 - Vision upgrade: Use createSnapshot to send PNG to vision-capable LLMs for spatial feedback
+- Custom UI themes: Modify appearance settings in AgentApp.mlapp
 
 ## Safety Guidelines
 
-- All tool calls are wrapped in try/catch with error redaction
+- All tool calls are wrapped in try/catch with enhanced error redaction
 - Model size limits can be enforced to prevent resource issues
 - Simulink.BlockDiagram.validate ensures model integrity before simulation
 - Never hardcode API keys or sensitive information in source code
+- Recent security improvements help prevent accidental exposure of sensitive data
