@@ -100,6 +100,16 @@ Orion Agent supports special commands that control its behavior:
    
    Example: `@agent Continue: Continue to iterate?` will continue the previous task with additional context
 
+## Project Mangement
+What is remaining to be done:
+- [x] HIGH PRIORITY: Separate the MATLAB and Simulink tools
+- [ ] HIGH PRIORITY: Capture errors and warnings in the log and give back to the LLM
+- [ ] Add more relevant tools to the toolbox
+- [ ] HIGH PRIORITY: Add more examples to the examples folder
+- [ ] Add how people can contribute to the project
+- [ ] HIGH PRIORITY: Enhance the documentation search tool since it is key for agents to find relevant information quickly
+- [ ] Add more examples to the examples folder
+
 ## API Key Security
 
 For secure handling of API keys, follow these best practices:
