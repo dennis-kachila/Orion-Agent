@@ -17,24 +17,48 @@ orion-ai-agent-mab/
 │   ├── Agent.m              % ReAct controller; owns chat history
 │   ├── ToolBox.m            % registers callable tools
 │   └── utils/
-│       └── redactErrors.m   % strips stack traces before LLM sees them
+│       ├── redactErrors.m   % strips stack traces before LLM sees them
+│       └── safeRedactErrors.m
 │
-├── +tools/                  % thin wrappers around MATLAB/Simulink APIs
-│   ├── run_code.m           % evalc wrapper for arbitrary MATLAB code
-│   ├── new_model.m          % new_system + open_system
-│   ├── add_block_safe.m     % add_block wrapper (makes name unique)
-│   ├── connect.m            % add_line; path syntax described in API docs
-│   ├── arrange.m            % Simulink.BlockDiagram.arrangeSystem
-│   ├── sim_model.m          % out = sim(mdl,'ReturnWorkspaceOutputs','on');
-│   ├── open_editor.m        % matlab.desktop.editor.openDocument
-│   └── doc_search.m         % find_system / web search of MathWorks help
+├── +tools/                  % organized tool categories
+│   ├── +general/            % general utilities
+│   │   └── doc_search.m     % search documentation
+│   │
+│   ├── +matlab/             % MATLAB-specific tools
+│   │   ├── check_code_lint.m
+│   │   ├── commit_git_repo.m
+│   │   ├── get_workspace_var.m
+│   │   ├── open_or_create_file.m
+│   │   ├── read_file_content.m
+│   │   ├── run_code_or_file.m
+│   │   ├── run_unit_tests.m
+│   │   ├── set_workspace_var.m
+│   │   └── write_file_contents.m
+│   │
+│   └── +simulink/           % Simulink-specific tools
+│       ├── auto_layout.m
+│       ├── close_current_model.m
+│       ├── connect_block_ports.m
+│       ├── create_new_model.m
+│       ├── disconnect_block_ports.m
+│       ├── get_block_params.m
+│       ├── insert_library_block.m
+│       ├── open_existing_model.m
+│       ├── remove_block.m
+│       ├── save_current_model.m
+│       ├── set_block_params.m
+│       └── simulate_model.m
 │
-├── +llm/
-│   ├── callGPT.m            % webwrite → OpenAI or local Llama or Gemini
+├── +llm/                    % LLM interaction components
+│   ├── callGPT.m            % API client for OpenAI, Gemini, or local models
 │   └── promptTemplates.m    % System & few-shot templates
 │
 ├── app/
 │   └── AgentChat.m          % App Designer UI converted to .m file
+│
+├── orion_workspace/         % Working directory for agent-generated files
+│   ├── debug_hello.m
+│   └── hello_count.m
 │
 └── tests/
     └── t_basic.m            % ensures each tool works on clean MATLAB
@@ -43,16 +67,29 @@ orion-ai-agent-mab/
 ## Setup and Configuration
 
 1. Clone the repo into a regular MATLAB project (so paths auto-load).
-2. Set up your API key using one of the following methods:
+2. Run `setup_paths.m` to ensure all required directories are added to MATLAB's path.
+3. Set up your API key using one of the following methods:
    - **Environment variable**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY` as environment variables
    - **Settings file**: Run `llm_settings.m` which will prompt you for your API key and save it securely
+   - **Batch file**: Run `set_api_key.bat` on Windows systems to set your environment variables
    
    > **⚠️ SECURITY WARNING**: Never hardcode API keys directly in source code files. Always use environment variables or a settings file that is excluded from version control (.gitignore).
 
-3. Start the application:
-   - Open and run `app/AgentChat.m` in MATLAB. The UI creates an agent.Agent instance internally.
+4. Start the application:
+   - Run `launch_agent.m` to start the Orion Agent
+   - Or open and run `app/AgentChat.m` in MATLAB for the UI interface
 
 > **Note**: The original App Designer file (.mlapp) has been converted to a standard MATLAB file (.m) for better compatibility. The keyboard shortcuts for sending messages have been removed to address compatibility issues with some MATLAB versions. Use the Send button to submit your requests.
+
+## Special Commands
+
+Orion Agent supports special commands that control its behavior:
+
+1. **@agent Continue**: Continues the previous conversation or task
+   - Usage: `@agent Continue` - Continues with default continuation prompt
+   - Usage: `@agent Continue: <custom prompt>` - Continues with a custom prompt
+   
+   Example: `@agent Continue: Continue to iterate?` will continue the previous task with additional context
 
 ## API Key Security
 
@@ -105,6 +142,10 @@ Orion Agent will execute the appropriate sequence of actions:
 5. Run a simulation
 6. Show the results and model preview
 
+To continue working on the same task, you can use:
+
+> "@agent Continue: Now add a Gain block between Sine Wave and Scope"
+
 ## Response Format
 
 Orion Agent returns responses in a structured JSON format:
@@ -139,6 +180,8 @@ If you encounter issues:
 
 4. **Missing dependencies**: Some functionality may require specific MATLAB toolboxes. Ensure you have Simulink and any other required toolboxes installed.
 
+5. **@agent Continue not working**: Make sure the agent has a previous conversation to continue. This command cannot be used as the first interaction.
+
 ## Runtime Flow
 
 The ReAct loop in Agent.m follows this pattern:
@@ -150,7 +193,7 @@ The ReAct loop in Agent.m follows this pattern:
 
 ## Extensibility
 
-- Add a new tool: drop a new .m file in +tools/ and add its handle in ToolBox.register()
+- Add a new tool: drop a new .m file in the appropriate +tools/ subdirectory and add its handle in ToolBox.register()
 - Swap LLM: edit llm/callGPT.m (response must stay JSON-parseable)
 - Vision upgrade: Use createSnapshot to send PNG to vision-capable LLMs for spatial feedback
 
