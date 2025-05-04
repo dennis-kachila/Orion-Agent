@@ -16,7 +16,11 @@ function result = check_code_lint(input, isFile)
             isFile = ~isempty(ext) && strcmpi(ext, '.m') && exist(input, 'file');
         end
         
-        fprintf('Running code linting on %s\n', isFile ? ['file: ' input] : 'provided code');
+        if isFile
+            fprintf('Running code linting on file: %s\n', input);
+        else
+            fprintf('Running code linting on provided code\n');
+        end
         
         % Handle file or direct code
         if isFile
@@ -95,10 +99,14 @@ function result = check_code_lint(input, isFile)
         
     catch ME
         % Handle any errors
-        errorMsg = agent.utils.redactErrors(ME);
         result = struct('status', 'error', ...
-                       'source', isFile ? 'file' : 'code', ...
-                       'error', errorMsg);
+                       'source', '', ...
+                       'error', agent.utils.redactErrors(ME)); % Ensure semicolon to suppress output
+        if isFile
+            result.source = 'file';
+        else
+            result.source = 'code';
+        end
         
         if isFile
             result.fileName = input;

@@ -65,7 +65,7 @@ function result = commit_git_repo(commitMessage, repoPath, stageAll)
             commitCmd = sprintf('git commit -m "%s"', escapedMessage);
         else
             % Unix: single quotes are safer, but need to escape them inside the message
-            escapedMessage = strrep(commitMessage, '''', ''\''');
+            escapedMessage = strrep(commitMessage, '''', '''''');
             commitCmd = sprintf('git commit -m ''%s''', escapedMessage);
         end
         
