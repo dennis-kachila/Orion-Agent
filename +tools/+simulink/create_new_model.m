@@ -22,7 +22,7 @@ function result = create_new_model(modelName, savePath)
         
         % Create full path
         fullModelPath = fullfile(savePath, modelName);
-        [modelDir, modelNameOnly, modelExt] = fileparts(fullModelPath);
+        [modelDir, modelNameOnly, ~] = fileparts(fullModelPath);
         
         fprintf('Creating new Simulink model: %s\n', fullModelPath);
         

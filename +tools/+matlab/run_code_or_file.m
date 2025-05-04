@@ -53,8 +53,13 @@ function result = run_code_or_file(input, isFile)
     catch ME
         % Handle any errors
         errorMsg = agent.utils.redactErrors(ME);
+        if isFile
+            sourceType = 'file';
+        else
+            sourceType = 'code';
+        end
         result = struct('status', 'error', ...
-                       'source', isFile ? 'file' : 'code', ...
+                       'source', sourceType, ...
                        'error', errorMsg);
         
         if isFile

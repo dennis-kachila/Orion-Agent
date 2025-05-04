@@ -18,7 +18,12 @@ function result = open_or_create_file(fileName, content)
         
         % Check if file exists
         fileExists = exist(fileName, 'file');
-        fprintf('File exists: %s\n', fileExists ? 'Yes' : 'No');
+        if fileExists
+            fileExistsStr = 'Yes';
+        else
+            fileExistsStr = 'No';
+        end
+        fprintf('File exists: %s\n', fileExistsStr);
         
         % Create directory if needed
         [fileDir, ~, ~] = fileparts(fileName);
@@ -53,10 +58,14 @@ function result = open_or_create_file(fileName, content)
             fprintf('File opened in MATLAB Editor\n');
             
             % Return result
+            editorStatus = 'Created and opened new file';
+            if fileExists
+                editorStatus = 'Opened existing file';
+            end
             result = struct('status', 'success', ...
                            'fileName', fileName, ...
                            'documentInfo', struct('path', document.Filename, ...
-                                                 'editorStatus', fileExists ? 'Opened existing file' : 'Created and opened new file'));
+                                                 'editorStatus', editorStatus));
         catch ME
             % If editor can't be opened, return partial success
             fprintf('Warning: Could not open file in editor: %s\n', ME.message);

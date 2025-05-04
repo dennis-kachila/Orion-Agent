@@ -110,13 +110,8 @@ function result = simulate_model(modelName, simTime, outputParams)
                     
                     % Extract time and data
                     try
-                        if isa(simOut.(varName), 'Simulink.SimulationData.Signal')
-                            timeData = simOut.(varName).Time;
-                            signalData = simOut.(varName).Data;
-                        else % timeseries
-                            timeData = simOut.(varName).Time;
-                            signalData = simOut.(varName).Data;
-                        end
+                        timeData = simOut.(varName).Time;
+                        signalData = simOut.(varName).Data;
                         
                         % If data is large, take samples
                         maxSamples = 100; % Maximum number of samples to include

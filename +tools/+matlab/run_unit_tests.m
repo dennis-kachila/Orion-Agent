@@ -8,11 +8,12 @@ function result = run_unit_tests(testFolder, testName)
     % Output:
     %   result - Structure containing test results and status
     
+    import matlab.unittest.TestSuite;
+    import matlab.unittest.TestRunner;
+    import matlab.unittest.plugins.TAPPlugin;
+    import matlab.unittest.plugins.ToFile;
+    
     try
-        import matlab.unittest.TestSuite;
-        import matlab.unittest.TestRunner;
-        import matlab.unittest.plugins.TAPPlugin;
-        import matlab.unittest.plugins.ToFile;
         
         fprintf('Running MATLAB unit tests\n');
         
@@ -96,11 +97,17 @@ function result = run_unit_tests(testFolder, testName)
         % Create test summary list
         testSummary = cell(totalCount, 1);
         for i = 1:totalCount
-            test = testResults(i);
+            status = '';
+            if testResults(i).Passed
+                status = 'PASSED';
+            elseif testResults(i).Failed
+                status = 'FAILED';
+            else
+                status = 'INCOMPLETE';
+            end
             testSummary{i} = sprintf('%s.%s: %s (%.2fs)', ...
-                class(test.TestClass), test.Name, ...
-                test.Passed ? 'PASSED' : (test.Failed ? 'FAILED' : 'INCOMPLETE'), ...
-                test.Duration);
+                class(testResults(i).TestClass), testResults(i).Name, ...
+                status, testResults(i).Duration);
         end
         
         % Parse TAP file for more details (if needed)

@@ -45,7 +45,7 @@ function result = save_current_model(modelName, savePath)
             
             % Check if path is a directory or filename
             [~, ~, ext] = fileparts(savePath);
-            if isempty(ext) || (ext ~= '.slx' && ext ~= '.mdl')
+            if isempty(ext) || (~strcmp(ext, '.slx') && ~strcmp(ext, '.mdl'))
                 % It's a directory, construct full path
                 if ~exist(savePath, 'dir')
                     mkdir(savePath);
