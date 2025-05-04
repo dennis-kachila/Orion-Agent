@@ -193,13 +193,14 @@ These enhancements significantly improve the user experience by providing better
 ```mermaid
 graph TD
     U(User Prompt) --> P[PromptBuilder]
-    P -->|System+History| L[callGPT]
-    L -->|JSON: {tool,args}| D[Dispatcher]
+    P -->|System and History| L[callGPT]
+    L -->|JSON: tool, args| D[Dispatcher]
     D -->|function handle| T[+tools/*]
-    T --> R[Result (string, struct, PNG)]
+    T --> R[Result string, struct, PNG]
     R --> H[history update]
     H --> P
     R --> UI[AgentChat pane]
+
 ```
 
 - **PromptBuilder** (in promptTemplates.m) merges user text, truncated history, and the tool list.
