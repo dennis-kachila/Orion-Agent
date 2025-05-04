@@ -141,7 +141,11 @@ runtests('tests');
 
 In the AgentChat UI, you can type natural language requests like:
 
-> "Create a model with a Sine Wave feeding a Scope and simulate for 1 s."
+For MaTLAB:
+> "Create a MATLAB script that says hello world and prints numbers from 1 to 10."
+> 
+For Simulink:
+> "Create a model with a Sine Wave feeding a Scope and simulate for 5 s."
 
 Orion Agent will execute the appropriate sequence of actions:
 1. Create a new model
