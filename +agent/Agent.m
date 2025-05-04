@@ -35,6 +35,77 @@ classdef Agent < handle
         
         function response = processUserInput(obj, userText)
             % Process user input and return agent response
+            
+            % Check for @agent commands
+            if startsWith(strtrim(userText), "@agent")
+                % Extract the command part after @agent
+                commandText = extractAfter(strtrim(userText), "@agent");
+                commandText = strtrim(commandText);
+                
+                % Handle specific agent commands
+                if startsWith(commandText, "Continue")
+                    fprintf('Continuing previous conversation...\n');
+                    % Extract any additional prompt after "Continue: "
+                    if contains(commandText, ":")
+                        additionalPrompt = extractAfter(commandText, ":");
+                        additionalPrompt = strtrim(additionalPrompt);
+                        % Add the continuation prompt to history
+                        obj.chatHistory(end+1) = struct('role', 'user', 'content', additionalPrompt);
+                    else
+                        % If no additional prompt, add a generic continuation message
+                        obj.chatHistory(end+1) = struct('role', 'user', 'content', 'Please continue from where you left off.');
+                    end
+                    
+                    % Generate prompt with history and tool descriptions
+                    fullPrompt = llm.promptTemplates.buildPrompt(obj.chatHistory, obj.ToolBox.getToolDescriptions());
+                    
+                    % Call LLM for response
+                    try
+                        fprintf('Calling LLM to continue previous conversation...\n');
+                        llmResponse = obj.llmInterface(fullPrompt);
+                        
+                        % Parse response
+                        responseObj = jsondecode(llmResponse);
+                        
+                        % Create response structure with proper MATLAB syntax for default value
+                        if isfield(responseObj, 'summary')
+                            summaryText = responseObj.summary;
+                        else
+                            summaryText = 'Continued previous conversation';
+                        end
+                        
+                        continuationResponse = struct(...
+                            'summary', summaryText, ...
+                            'files', {obj.modifiedFiles}, ...
+                            'log', {obj.toolLog});
+                            
+                        response = jsonencode(continuationResponse);
+                        return;
+                    catch ME
+                        errorMsg = agent.utils.safeRedactErrors(ME);
+                        fprintf('Error during continuation: %s\n', errorMsg);
+                        
+                        % Create error response
+                        errorResponse = struct(...
+                            'summary', 'Error occurred while continuing conversation', ...
+                            'error', errorMsg);
+                        
+                        response = jsonencode(errorResponse);
+                        return;
+                    end
+                else
+                    % Handle other @agent commands here
+                    fprintf('Unknown @agent command: %s\n', commandText);
+                    
+                    errorResponse = struct(...
+                        'summary', sprintf('Unknown @agent command: %s', commandText), ...
+                        'error', 'Unsupported command');
+                        
+                    response = jsonencode(errorResponse);
+                    return;
+                end
+            end
+            
             % Add user message to history
             obj.chatHistory(end+1) = struct('role', 'user', 'content', userText);
             
