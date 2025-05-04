@@ -1,4 +1,4 @@
-classdef AgentChat < matlab.apps.AppBase
+classdef AgentChatOld < matlab.apps.AppBase
     % AGENTCHAT UI interface for Orion Agent
     % Chat pane + live PNG preview via Simulink.BlockDiagram.createSnapshot
 
@@ -360,7 +360,7 @@ classdef AgentChat < matlab.apps.AppBase
 
     % Public methods
     methods (Access = public)
-        function app = AgentChat
+        function app = AgentChatOld
             % Constructor
             
             % Create and configure components

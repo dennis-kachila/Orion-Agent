@@ -8,6 +8,15 @@ Orion Agent uses a curated set of programmatic "tools" (functions) exposed to a 
 
 The agent manipulates models through documented MATLAB/Simulink APIs such as `add_block`, `add_line`, `set_param`, `sim`, the MATLAB Desktop Editor API, and other stable interfaces, rather than driving the GUI with mouse clicks.
 
+Here is how the UI looks:
+![Orion Agent UI](layout/app.png)
+> **Note**: The original App Designer file (.mlapp) has been converted to a standard MATLAB file (.m) for better compatibility. The keyboard shortcuts for sending messages have been removed to address compatibility issues with some MATLAB versions. Use the Send button to submit your requests.
+>
+> **Note**: The app is designed to be run in a MATLAB session with a licensed version of Simulink.
+>
+>Below is a screenshot of the app designed in App Designer:
+![Orion Agent UI App Designer](layout/app_ui.png)
+
 ## Project Structure
 
 ```

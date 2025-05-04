@@ -47,7 +47,7 @@ cd app;
 % Launch the AgentChat application
 fprintf('Launching AgentChat...\n');
 try
-    AgentChat;
+    AgentChat; 
     fprintf('Application closed.\n');
 catch ME
     fprintf('ERROR launching application: %s\n', ME.message);
