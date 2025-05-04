@@ -26,3 +26,7 @@ Thumbs.db
 
 # add orion_workspace to gitignore
 orion_workspace/
+
+llm_settings.mat
+# all .mat files
+*.mat
