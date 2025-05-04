@@ -30,3 +30,4 @@ orion_workspace/
 llm_settings.mat
 # all .mat files
 *.mat
+*.mlapp

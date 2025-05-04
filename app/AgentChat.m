@@ -376,7 +376,7 @@ classdef AgentChat < matlab.apps.AppBase
             app.updateChatHistory(welcomeMessage, 'assistant');
             
             % Register app close callback
-            app.UIFigure.CloseRequestFcn = @(~,~)app.closeApp();
+            app.UIFigure.CloseRequestFcn = @(~,~)app.delete();
             
             % Show the app
             if nargout == 0
@@ -384,7 +384,7 @@ classdef AgentChat < matlab.apps.AppBase
             end
         end
         
-        function closeApp(app)
+        function delete(app)
             % Clean up when app is closed
             
             % Close any open models
@@ -394,6 +394,7 @@ classdef AgentChat < matlab.apps.AppBase
             
             % Delete the figure
             delete(app.UIFigure);
+            
         end
     end
 end
