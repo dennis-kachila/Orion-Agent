@@ -40,7 +40,7 @@ classdef AgentAppChat < matlab.apps.AppBase
         % Button pushed function: clearButton
         function clear_agent_thought_process(app, ~)
             % Clear the workflow log
-            app.AgentWorkFlowLogTextArea.Value = {};
+            app.AgentWorkFlowLogTextArea.Value = {''};
             app.updateWorkflowLog('Workflow log cleared');
             
             % Reset status indicators
