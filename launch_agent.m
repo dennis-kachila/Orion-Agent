@@ -8,6 +8,27 @@ fprintf('Current directory: %s\n', pwd);
 fprintf('Setting up paths...\n');
 setup_paths;
 
+% Add compatibility layer for safeRedactErrors in case of package path issues
+fprintf('Setting up compatibility layer for utilities...\n');
+try
+    % Check if safeRedactErrors can be resolved as a package function
+    try
+        testME = MException('TEST:Error', 'Test error message');
+        agent.utils.safeRedactErrors(testME);
+        fprintf('✓ agent.utils.safeRedactErrors is working properly\n');
+    catch
+        % Create a local copy as a fallback for now
+        fprintf('⚠ WARNING: Cannot resolve agent.utils.safeRedactErrors, creating a local fallback\n');
+        % Define the fallback function in our workspace
+        safeRedactErrors = @(ME)redactErrorsLocal(ME);
+        % Make it accessible globally
+        assignin('base', 'safeRedactErrors', safeRedactErrors);
+        fprintf('✓ Created fallback error redaction function\n');
+    end
+catch 
+    fprintf('⚠ WARNING: Could not set up error redaction utilities\n');
+end
+
 % Test LLM configuration before launching
 fprintf('Testing LLM configuration...\n');
 try
@@ -65,13 +86,49 @@ try
     % Start the application
     app = AgentAppChat();  % Instantiate and start the application
     fprintf('Application launched successfully.\n');  % Update message to indicate successful launch
-    fprintf('Application closed.\n');  % Application closed message should be moved inside the try block
 catch ME
-    fprintf('ERROR launching application: %s\n', ME.message);
-    if ~isempty(ME.stack)
-        fprintf('  Error in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+    % Use our fallback redaction if available
+    try
+        if exist('safeRedactErrors', 'var')
+            errorMsg = safeRedactErrors(ME);
+        else
+            errorMsg = ME.message;
+        end
+        fprintf('ERROR launching application: %s\n', errorMsg);
+    catch
+        fprintf('ERROR launching application: %s\n', ME.message);
+        if ~isempty(ME.stack)
+            fprintf('  Error in: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+        end
     end
 end
 
 % Return to the original directory when done
 cd ..;  % Ensure this line is executed after the try-catch block
+
+% Local fallback implementation of error redaction
+function errorMsg = redactErrorsLocal(ME)
+    % Simple error redaction function as a fallback
+    msg = ME.message;
+    % Remove absolute Windows paths
+    msg = regexprep(msg, '[A-Za-z]:\\[^\s\n]*', '[REDACTED_PATH]');
+    % Remove OneDrive or user directory references
+    msg = regexprep(msg, 'OneDrive[^\s\n]*', '[REDACTED_ONEDRIVE]');
+    msg = regexprep(msg, 'Users\\[^\s\n]*', '[REDACTED_USER]');
+    
+    errorMsg = sprintf('Error: %s', msg);
+    
+    % Add a simplified stack trace
+    if ~isempty(ME.stack)
+        stackStr = '\nStack trace (simplified):\n';
+        maxFrames = min(3, length(ME.stack));
+        
+        for i = 1:maxFrames
+            frame = ME.stack(i);
+            funcName = regexprep(frame.name, '[A-Za-z]:\\[^\s\n]*', '[REDACTED]');
+            stackStr = [stackStr, sprintf('  - Function: %s, Line: %d\n', funcName, frame.line)];
+        end
+        
+        errorMsg = [errorMsg, stackStr];
+    end
+end
