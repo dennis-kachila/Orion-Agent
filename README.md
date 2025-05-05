@@ -100,15 +100,29 @@ Orion Agent supports special commands that control its behavior:
    
    Example: `@agent Continue: Continue to iterate?` will continue the previous task with additional context
 
-## Project Mangement
+## Project Management
 What is remaining to be done:
-- ✅HIGH PRIORITY: Separate the MATLAB and Simulink tools
-- ⬜ HIGH PRIORITY: Capture errors and warnings in the log and give back to the LLM
-- ⬜ Add more relevant tools to the toolbox
-- ⬜ HIGH PRIORITY: Add more examples to the examples folder
-- ⬜ Add how people can contribute to the project
-- ⬜ HIGH PRIORITY: Enhance the documentation search tool since it is key for agents to find relevant information quickly
-- ⬜ Add more examples to the examples folder
+- ✅ HIGH PRIORITY: Separate the MATLAB and Simulink tools (done)
+- ✅ HIGH PRIORITY: Capture errors and warnings in the log and give back to the LLM (done)
+- ✅ Add more relevant tools to the toolbox (done for core MATLAB/Simulink workflows; more can be added as needed)
+- ⬜ HIGH PRIORITY: Add more examples to the examples folder (pending)
+- ⬜ Add how people can contribute to the project (pending)
+- ⬜ HIGH PRIORITY: Enhance the documentation search tool since it is key for agents to find relevant information quickly (pending)
+- ⬜ Add more examples to the examples folder (pending)
+- ⬜ Add more robust and diverse few-shot examples for LLM prompt engineering (pending)
+- ⬜ Add more unit and integration tests for new and edge-case tool behaviors (pending)
+- ⬜ Improve UI accessibility and add visual cues for errors/success (pending)
+- ⬜ Add support for user-configurable tool/plugin registration (pending)
+- ⬜ Add support for multi-turn, multi-user chat history (pending)
+- ⬜ Add more advanced error recovery and self-healing strategies for the agent (pending)
+- ⬜ Add CI/CD pipeline for automated testing and linting (pending)
+- ⬜ Add internationalization/localization support (pending)
+- ⬜ Add more detailed developer and user documentation (pending)
+- ⬜ Add performance benchmarks and profiling (pending)
+- ⬜ Add telemetry/analytics (opt-in) for usage and error tracking (pending)
+- ⬜ Add support for additional LLM providers and model selection (pending)
+- ⬜ Add advanced Simulink model validation and reporting (pending)
+- ⬜ Add more granular user permissions and security controls (pending)
 
 ## API Key Security
 
