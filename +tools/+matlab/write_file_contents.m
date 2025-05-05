@@ -88,12 +88,14 @@ function result = write_file_contents(fileName, content, mode)
         
         % Return success result
         result = struct('status', 'success', ...
+                       'summary', sprintf('Wrote to file: %s', fileName), ...
                        'fileName', fileName, ...
                        'bytesWritten', length(content));
         
     catch ME
         % Handle any errors
-        errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        errorMsg = agent.utils.safeRedactErrors(ME);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to write to file: %s', errorMsg));
     end
 end

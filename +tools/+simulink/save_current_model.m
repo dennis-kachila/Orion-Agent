@@ -80,15 +80,18 @@ function result = save_current_model(modelName, savePath)
         
         % Return result
         result = struct('status', 'success', ...
+                       'summary', sprintf('Saved model: %s to %s', modelName, modelPath), ...
                        'modelName', modelName, ...
                        'modelPath', modelPath, ...
                        'snapshot', pngBase64);
         
     catch ME
         % Handle any errors
-        errorMsg = agent.utils.redactErrors(ME);
+        errorMsg = agent.utils.safeRedactErrors(ME);
+        errorMsg = sprintf('An error occurred: %s\nIf this persists, please check your input or contact support.', errorMsg);
         result = struct('status', 'error', ...
-                       'error', errorMsg);
+                       'error', errorMsg, ...
+                       'summary', sprintf('Failed to save model: %s', errorMsg));
         
         fprintf('Error saving model: %s\n', errorMsg);
     end

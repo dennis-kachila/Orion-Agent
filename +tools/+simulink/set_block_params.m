@@ -95,6 +95,7 @@ function result = set_block_params(blockPath, params)
         
         % Return result
         result = struct('status', 'success', ...
+                       'summary', sprintf('Set parameters for block: %s', blockPath), ...
                        'blockPath', blockPath, ...
                        'modelName', modelName, ...
                        'updatedParams', params, ...
@@ -102,9 +103,10 @@ function result = set_block_params(blockPath, params)
                        'snapshot', pngBase64);
         
     catch ME
-        % Handle errors
-        errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        errorMsg = agent.utils.safeRedactErrors(ME);
+        errorMsg = sprintf('An error occurred: %s\nIf this persists, please check your input or contact support.', errorMsg);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to set block parameters: %s', errorMsg));
     end
 end
 

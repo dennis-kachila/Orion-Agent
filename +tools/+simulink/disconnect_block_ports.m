@@ -104,20 +104,23 @@ function result = disconnect_block_ports(lineHandle)
                            'sourceBlock', srcBlockName, ...
                            'destinationBlock', dstBlockName, ...
                            'modelName', modelName, ...
-                           'snapshot', pngBase64);
+                           'snapshot', pngBase64, ...
+                           'summary', sprintf('Disconnected line from %s to %s in model %s.', srcBlockName, dstBlockName, modelName));
         catch ME
             % If we can't get line info, just try to delete it anyway
             delete_line(lineHandle);
             
             % Return a more generic result
             result = struct('status', 'success', ...
-                           'message', 'Line was deleted but source/destination info could not be retrieved');
+                           'message', 'Line was deleted but source/destination info could not be retrieved', ...
+                           'summary', 'A signal line was deleted, but detailed connection info could not be retrieved.');
         end
         
     catch ME
         % Handle errors
         errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to disconnect line: %s', errorMsg));
     end
 end
 

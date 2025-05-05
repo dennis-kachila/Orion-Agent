@@ -59,14 +59,14 @@ function response = callGPT(prompt)
         
         % Provide appropriate debug responses based on the request
         if contains(userQuery, 'hello world') || contains(userQuery, 'print hello')
-            % For hello world requests, use run_code for immediate output
-            response = '{"tool": "run_code", "args": {"codeStr": "disp(''Hello World!''); disp(''Counting from 1 to 10:''); for i = 1:10, disp(i); end"}}';
+            % For hello world requests, use run_code_or_file for immediate output
+            response = '{"tool": "run_code_or_file", "args": {"codeStr": "disp(''Hello World!''); disp(''Counting from 1 to 10:''); for i = 1:10, disp(i); end"}}';
         elseif contains(userQuery, 'script') || contains(userQuery, 'create') || contains(userQuery, 'write')
-            % For script creation, use open_editor with file content
+            % For script creation, use open_or_create_file with file content
             scriptContent = sprintf('%%HELLO_WORLD - A simple script that prints hello world and counts\n\ndisp(''Hello World!'');\ndisp(''Counting from 1 to 10:'');\n\n%% Count from 1 to 10\nfor i = 1:10\n    disp(i);\nend');
-            response = sprintf('{"tool": "open_editor", "args": {"fileName": "hello_world.m", "content": "%s"}}', regexprep(scriptContent, '(["\])', '\\$1'));
+            response = sprintf('{"tool": "open_or_create_file", "args": {"fileName": "hello_world.m", "content": "%s"}}', regexprep(scriptContent, '(["\\])', '\\$1'));
         elseif contains(userQuery, 'simulink') || contains(userQuery, 'model')
-            response = '{"tool": "new_model", "args": {"modelName": "example_model"}}';
+            response = '{"tool": "create_new_model", "args": {"modelName": "example_model"}}';
         else
             % Default fallback response
             response = '{"tool": "respond", "args": {"message": "I understand your request. How can I assist you with MATLAB or Simulink today?"}}';

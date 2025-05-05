@@ -55,14 +55,17 @@ function result = remove_block(blockPath)
         
         % Return result
         result = struct('status', 'success', ...
+                       'summary', sprintf('Removed block: %s from model %s', blockPath, modelName), ...
                        'removedBlockPath', blockPath, ...
                        'modelName', modelName, ...
                        'snapshot', pngBase64);
         
     catch ME
         % Handle errors
-        errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        errorMsg = agent.utils.safeRedactErrors(ME);
+        errorMsg = sprintf('An error occurred: %s\nIf this persists, please check your input or contact support.', errorMsg);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to remove block: %s', errorMsg));
     end
 end
 

@@ -72,7 +72,7 @@ classdef AgentAppChat < matlab.apps.AppBase
             app.updateChatHistory(userInput, 'user');
             
             % Clear input
-            app.UserInputTextArea.Value = {};
+            app.UserInputTextArea.Value = {''};
             
             % Update status
             app.setAgentStatus('Processing');
@@ -242,24 +242,39 @@ classdef AgentAppChat < matlab.apps.AppBase
         
         function updateModelPreview(app, modelName)
             % Update the preview image with a Simulink model snapshot
-            
             try
                 % Check if model is open
                 if ~isempty(modelName) && bdIsLoaded(modelName)
                     app.updateWorkflowLog(sprintf('Generating snapshot of model: %s', modelName));
-                    
+
+                    % Clean up old temp PNG files if more than 100 exist
+                    tempDir = tempdir;
+                    pngFiles = dir(fullfile(tempDir, '*.png'));
+                    if numel(pngFiles) > 100
+                        % Sort by datenum (oldest first)
+                        [~, idx] = sort([pngFiles.datenum]);
+                        filesToDelete = pngFiles(idx(1:end-100));
+                        for k = 1:numel(filesToDelete)
+                            try
+                                delete(fullfile(tempDir, filesToDelete(k).name));
+                            catch
+                                % Ignore errors
+                            end
+                        end
+                    end
+
                     % Create snapshot and save to base64
                     pngData = Simulink.BlockDiagram.createSnapshot(modelName);
-                    
+
                     % Save PNG to temporary file
                     tempFile = [tempname, '.png'];
                     fid = fopen(tempFile, 'wb');
                     fwrite(fid, pngData);
                     fclose(fid);
-                    
+
                     % Store current snapshot
                     app.CurrentSnapshot = pngData;
-                    
+
                     % Update display
                     app.ModelSnapshotPreviewImage.ImageSource = tempFile;
                     app.SimulinkModelPreviewLabel.Text = ['Model: ', modelName];
@@ -373,8 +388,13 @@ classdef AgentAppChat < matlab.apps.AppBase
         
         function decoded = base64decode(~, encoded)
             % Base64 decode function
-            import org.apache.commons.codec.binary.Base64;
-            decoded = Base64.decodeBase64(uint8(encoded));
+            % import org.apache.commons.codec.binary.Base64;
+            % decoded = Base64.decodeBase64(uint8(encoded));
+            % Use MATLAB built-in base64decode for compatibility
+            if isstring(encoded) || ischar(encoded)
+                encoded = char(encoded);
+            end
+            decoded = matlab.net.base64decode(encoded);
         end
     end
 
@@ -412,7 +432,7 @@ classdef AgentAppChat < matlab.apps.AppBase
             app.UserInputTextArea = uitextarea(app.CHATPanel);
             app.UserInputTextArea.Placeholder = 'Please start typing here..';
             app.UserInputTextArea.Position = [19 15 289 106];
-            app.UserInputTextArea.Value = {'jjjij'; 'nknknldfdlmmdml'};
+            app.UserInputTextArea.Value = {''};
 
             % Create StopButton
             app.StopButton = uibutton(app.CHATPanel, 'push');
@@ -497,7 +517,7 @@ classdef AgentAppChat < matlab.apps.AppBase
             
             % Set initial UI state
             app.setAgentStatus('Ready');
-            app.UserInputTextArea.Value = {};  % Clear default debug text
+            app.UserInputTextArea.Value = {''};  % Clear default debug text
             
             % Display welcome message
             welcomeMessage = 'Welcome to Orion Agent! I can help you create and simulate MATLAB scripts and Simulink models. Tell me what you would like to build.';

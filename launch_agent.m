@@ -47,8 +47,25 @@ cd app;
 % Launch the AgentChat application
 fprintf('Launching AgentChat...\n');
 try
-    AgentChat; 
-    fprintf('Application closed.\n');
+    % Check if the application is already running
+    if ispc
+        [~, result] = system('tasklist /FI "WINDOWTITLE eq AgentAppChat"');
+        if contains(result, 'AgentAppChat')
+            fprintf('⚠ WARNING: AgentAppChat is already running\n');
+            return;
+        end
+    elseif isunix
+        [~, result] = system('pgrep -f AgentAppChat');  % Update to check for AgentAppChat
+        if ~isempty(result)
+            fprintf('⚠ WARNING: AgentAppChat is already running\n');  % Update message to indicate correct application name
+            return;
+        end
+   
+    end
+    % Start the application
+    app = AgentAppChat();  % Instantiate and start the application
+    fprintf('Application launched successfully.\n');  % Update message to indicate successful launch
+    fprintf('Application closed.\n');  % Application closed message should be moved inside the try block
 catch ME
     fprintf('ERROR launching application: %s\n', ME.message);
     if ~isempty(ME.stack)
@@ -57,4 +74,4 @@ catch ME
 end
 
 % Return to the original directory when done
-cd ..;
+cd ..;  % Ensure this line is executed after the try-catch block

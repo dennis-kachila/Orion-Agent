@@ -36,7 +36,7 @@ function result = open_or_create_file(fileName, content)
         end
         
         % Write content if provided and file doesn't exist
-        if nargin > 1 && ~isempty(content) && ~fileExists
+        if nargin > 1 && ~isempty(content) && !fileExists
             fprintf('Writing initial content to new file (length: %d)\n', length(content));
             
             % Write the content to the file
@@ -63,6 +63,7 @@ function result = open_or_create_file(fileName, content)
                 editorStatus = 'Opened existing file';
             end
             result = struct('status', 'success', ...
+                           'summary', sprintf('Opened or created file: %s', fileName), ...
                            'fileName', fileName, ...
                            'documentInfo', struct('path', document.Filename, ...
                                                  'editorStatus', editorStatus));
@@ -70,12 +71,14 @@ function result = open_or_create_file(fileName, content)
             % If editor can't be opened, return partial success
             fprintf('Warning: Could not open file in editor: %s\n', ME.message);
             result = struct('status', 'partial_success', ...
+                           'summary', sprintf('Opened or created file: %s', fileName), ...
                            'fileName', fileName, ...
                            'error', ME.message);
         end
     catch ME
         % Handle any errors
-        errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        errorMsg = agent.utils.safeRedactErrors(ME);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to open or create file: %s', errorMsg));
     end
 end

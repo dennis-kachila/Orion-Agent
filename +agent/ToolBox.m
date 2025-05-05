@@ -163,50 +163,13 @@ classdef ToolBox < handle
                     
                 catch ME
                     % Handle tool execution errors
-                    errorMsg = obj.simpleRedactErrors(ME);
+                    errorMsg = agent.utils.safeRedactErrors(ME);
                     result = struct('error', errorMsg);
                 end
             catch ME
                 % Handle errors in tool dispatch
-                errorMsg = obj.simpleRedactErrors(ME);
+                errorMsg = agent.utils.safeRedactErrors(ME);
                 result = struct('error', errorMsg);
-            end
-        end
-        
-        function errorMsg = simpleRedactErrors(~, ME)
-            % SIMPLEREDACTERRORS - Basic error redacting function
-            % This function replaces the dependency on agent.utils.safeRedactErrors
-            % with a direct implementation to avoid namespace issues
-            
-            try
-                % Get the error message
-                errorMsg = ME.message;
-                
-                % Remove file paths
-                errorMsg = regexprep(errorMsg, 'File: [^\n]*', 'File: [REDACTED]');
-                
-                % Remove any absolute paths that might be in the message
-                errorMsg = regexprep(errorMsg, '([A-Za-z]:\\[^:"\s\n\r]+)', '[REDACTED_PATH]');
-                errorMsg = regexprep(errorMsg, '(/[^:"\s\n\r]+)', '[REDACTED_PATH]');
-                
-                % Limit stack trace
-                if ~isempty(ME.stack)
-                    % Include only the function name and line number for the first few stack frames
-                    stackStr = '\nStack trace (limited):\n';
-                    
-                    maxStackFrames = min(3, length(ME.stack));
-                    for i = 1:maxStackFrames
-                        frame = ME.stack(i);
-                        % Only include function name and line, not full file path
-                        stackStr = [stackStr, sprintf('  - Function: %s, Line: %d\n', ...
-                            frame.name, frame.line)];
-                    end
-                    
-                    errorMsg = [errorMsg, stackStr];
-                end
-            catch InnerME
-                % If error handling fails, return a simple error message
-                errorMsg = sprintf('Error: %s', ME.message);
             end
         end
         

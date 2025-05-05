@@ -38,6 +38,7 @@ function result = read_file_content(fileName)
         
         % Return result with file content
         result = struct('status', 'success', ...
+                       'summary', sprintf('Read file: %s', fileName), ...
                        'fileName', fileName, ...
                        'content', content, ...
                        'byteCount', length(content));
@@ -47,6 +48,7 @@ function result = read_file_content(fileName)
     catch ME
         % Handle any errors
         errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to read file: %s', errorMsg));
     end
 end

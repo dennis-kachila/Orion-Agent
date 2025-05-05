@@ -113,6 +113,7 @@ function result = get_block_params(blockPath, paramNames)
         
         % Return result
         result = struct('status', 'success', ...
+                       'summary', sprintf('Retrieved parameters for block: %s', blockPath), ...
                        'blockPath', blockPath, ...
                        'blockType', blockType, ...
                        'blockHandle', blockHandle, ...
@@ -131,8 +132,9 @@ function result = get_block_params(blockPath, paramNames)
         
     catch ME
         % Handle errors
-        errorMsg = agent.utils.redactErrors(ME);
-        result = struct('status', 'error', 'error', errorMsg);
+        errorMsg = ME.message; % (No longer used, replaced by safeRedactErrors)
+        result = struct('status', 'error', 'error', errorMsg, ...
+                       'summary', sprintf('Failed to get block parameters: %s', errorMsg));
     end
 end
 

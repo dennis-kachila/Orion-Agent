@@ -25,11 +25,29 @@ classdef Agent < handle
             try
                 % Use fully qualified path to avoid namespace issues
                 systemPrompt = llm.promptTemplates.getSystemPrompt();
+                % Add extra context/examples if the prompt is too short
+                if strlength(systemPrompt) < 100
+                    systemPrompt = [systemPrompt, ...
+                        '\n\nContext: You are an expert AI agent for MATLAB and Simulink. You help users write, debug, and understand MATLAB code and Simulink models.\n', ...
+                        'When you respond, use clear explanations and JSON format for tool calls.\n', ...
+                        'Example:\n', ...
+                        '{"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
+                        'If you need to run code, use the run_code_or_file tool.\n', ...
+                        'If you are unsure, ask the user for clarification.'];
+                end
                 obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
             catch ME
                 warning(ME.identifier, '%s', ME.message);
-                % Use a simple default prompt if the system prompt can't be loaded
-                obj.chatHistory(end+1) = struct('role', 'system', 'content', 'You are Orion, an AI Agent for MATLAB and Simulink.');
+                % Use a detailed default prompt if the system prompt can't be loaded
+                obj.chatHistory(end+1) = struct('role', 'system', 'content', [
+                    'You are Orion, an expert AI Agent for MATLAB and Simulink.\n', ...
+                    'Your job is to help users write, debug, and understand MATLAB code and Simulink models.\n', ...
+                    'Always respond in JSON format for tool calls.\n', ...
+                    'Example: {"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
+                    'If you need to run code, use the run_code_or_file tool.\n', ...
+                    'If you are unsure, ask the user for clarification.\n', ...
+                    'Be concise and helpful.'
+                ]);
             end
         end
         
@@ -456,7 +474,7 @@ classdef Agent < handle
                     
                 catch ME
                     % Handle errors using direct error handling
-                    errorMsg = obj.simpleRedactErrors(ME);
+                    errorMsg = agent.utils.safeRedactErrors(ME);
                     fprintf('Error: %s\n', errorMsg);
                     obj.chatHistory(end+1) = struct('role', 'system', 'content', ...
                         sprintf('Error: %s', errorMsg));
@@ -548,43 +566,6 @@ classdef Agent < handle
         function files = getModifiedFiles(obj)
             % Get the list of files that were created or modified
             files = obj.modifiedFiles;
-        end
-        
-        function errorMsg = simpleRedactErrors(~, ME)
-            % SIMPLEREDACTERRORS - Basic error redacting function
-            % This function replaces the dependency on agent.utils.safeRedactErrors
-            % with a direct implementation to avoid namespace issues
-            
-            try
-                % Get the error message
-                errorMsg = ME.message;
-                
-                % Remove file paths
-                errorMsg = regexprep(errorMsg, 'File: [^\n]*', 'File: [REDACTED]');
-                
-                % Remove any absolute paths that might be in the message
-                errorMsg = regexprep(errorMsg, '([A-Za-z]:\\[^:"\s\n\r]+)', '[REDACTED_PATH]');
-                errorMsg = regexprep(errorMsg, '(/[^:"\s\n\r]+)', '[REDACTED_PATH]');
-                
-                % Limit stack trace
-                if ~isempty(ME.stack)
-                    % Include only the function name and line number for the first few stack frames
-                    stackStr = '\nStack trace (limited):\n';
-                    
-                    maxStackFrames = min(3, length(ME.stack));
-                    for i = 1:maxStackFrames
-                        frame = ME.stack(i);
-                        % Only include function name and line, not full file path
-                        stackStr = [stackStr, sprintf('  - Function: %s, Line: %d\n', ...
-                            frame.name, frame.line)];
-                    end
-                    
-                    errorMsg = [errorMsg, stackStr];
-                end
-            catch InnerME
-                % If error handling fails, return a simple error message
-                errorMsg = sprintf('Error: %s', ME.message);
-            end
         end
     end
 end
