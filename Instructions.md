@@ -223,7 +223,7 @@ When creating a file (like our hello world script), this detailed flow occurs:
 flowchart TD
     A[User sends request] --> B[Agent processes input]
     B --> C{Debug mode?}
-    C -->|Yes| D[Return predefined response:\n{"tool": "open_or_create_file", "args": {...}}]
+    C -->|Yes| D[Return predefined response: tool: open_or_create_file, args: ...]
     C -->|No| E[Call LLM API]
     E --> F[Parse LLM response]
     D --> G[Parse JSON response]
