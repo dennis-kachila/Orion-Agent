@@ -36,7 +36,7 @@ function result = open_or_create_file(fileName, content)
         end
         
         % Write content if provided and file doesn't exist
-        if nargin > 1 && ~isempty(content) && !fileExists
+        if nargin > 1 && ~isempty(content) && ~fileExists
             fprintf('Writing initial content to new file (length: %d)\n', length(content));
             
             % Write the content to the file

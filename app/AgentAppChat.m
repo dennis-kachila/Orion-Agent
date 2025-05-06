@@ -94,7 +94,8 @@ classdef AgentAppChat < matlab.apps.AppBase
         % Process agent request in timer callback to keep UI responsive
         function processAgentRequest(app, userInput)
             try
-                % Send to agent for processing
+                % Send to agent for processing (Outside the AgentAppChat UI context to the Agent.m class)
+                app.updateWorkflowLog('Processing user input...');
                 response = app.Agent.processUserInput(userInput);
                 
                 % Update UI from timer callback context
@@ -143,6 +144,10 @@ classdef AgentAppChat < matlab.apps.AppBase
             
             % Clean up timer if it exists
             if ~isempty(app.TaskTimer) && isvalid(app.TaskTimer)
+                % Always stop the timer before deleting it to avoid warnings
+                if strcmp(app.TaskTimer.Running, 'on')
+                    stop(app.TaskTimer);
+                end
                 delete(app.TaskTimer);
                 app.TaskTimer = [];
             end

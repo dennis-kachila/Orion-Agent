@@ -41,25 +41,6 @@ else
     fprintf('✗ agent.Agent class NOT found! Check that the +agent directory is in the path.\n');
 end
 
-% Check for safeRedactErrors.m file directly
-safeRedactErrorsPath = fullfile(rootDir, '+agent', 'utils', 'safeRedactErrors.m');
-if exist(safeRedactErrorsPath, 'file')
-    fprintf('✓ safeRedactErrors.m file found at: %s\n', safeRedactErrorsPath);
-    
-    % Additional check for package function access
-    try
-        % Try to evaluate the function with a simple test MException
-        testME = MException('TEST:Error', 'Test error message');
-        res = agent.utils.safeRedactErrors(testME);
-        fprintf('✓ Successfully called agent.utils.safeRedactErrors() function!\n');
-    catch ME
-        fprintf('✗ Found safeRedactErrors.m file, but could not execute it: %s\n', ME.message);
-    end
-else
-    fprintf('✗ safeRedactErrors.m file NOT found at expected location!\n');
-    fprintf('  Looking for: %s\n', safeRedactErrorsPath);
-end
-
 % Check for tools.matlab.run_code_or_file
 try
     % Try to evaluate the function directly for a more reliable check

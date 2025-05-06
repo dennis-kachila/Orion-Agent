@@ -153,13 +153,31 @@ classdef Agent < handle
             % Display status to command window
             fprintf('Processing request: "%s"\n', userText);
             
+            % Main loop for ReAct loop
+            %{ 
+
+            ReAct = Reasoning + Acting
+
+            In agent design for large‑language‑model systems, ReAct refers to a loop in which the model:
+
+            1. Reasons about the user’s request and the current state, deciding what to do next.
+
+            2. Acts by calling an external tool or function (e.g., add_block, sim).
+
+            3. Observes the tool’s result (success, error message, numeric output).
+
+            4. Feeds that observation back into its next step of Reasoning, and the cycle repeats until the goal is reached or the agent stops.
+             
+            
+            %}
+
             while iterCount < maxIterations && ~successfulResponse
                 iterCount = iterCount + 1;
                 fprintf('Iteration %d of %d\n', iterCount, maxIterations);
                 
                 % Call LLM to determine next action
                 try
-                    % Get LLM response
+                    % Call LLM with the full prompt to determine the next action
                     fprintf('Calling LLM to determine next action...\n');
                     llmResponse = obj.llmInterface(fullPrompt);
                     
@@ -515,7 +533,7 @@ classdef Agent < handle
             return;
         end
         
-        function processHistory(obj, history)
+        function processHistory(~, history)
             % Process history to output a formatted cell array for display
             if isempty(history)
                 return;
@@ -548,7 +566,7 @@ classdef Agent < handle
         
         function clearHistory(obj)
             % Clear chat history except for the system message
-            if ~isempty(obj.chatHistory) && length(obj.chatHistory) > 0
+            if ~isempty(obj.chatHistory)
                 systemMsg = obj.chatHistory{1};  % Keep system message
                 obj.chatHistory = {systemMsg};   % Reset history with system message
             end

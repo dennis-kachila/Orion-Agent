@@ -145,33 +145,182 @@ These enhancements significantly improve the user experience by providing better
 
 ---
 
-## APIs and Capabilities
+## Detailed Agent Workflow
 
-| Capability | MATLAB/Simulink call | Documentation |
-|------------|----------------------|---------------|
-| Insert block programmatically | `add_block(source,dest)` → returns handle | [MathWorks Documentation](https://www.mathworks.com/) |
-| Connect ports | `add_line(model,src,dst)` | [MathWorks Documentation](https://www.mathworks.com/) |
-| Clean diagram layout | `Simulink.BlockDiagram.arrangeSystem(model)` | [MathWorks Documentation](https://www.mathworks.com/) |
-| Query / set parameters | `get_param`, `set_param`, Simulink.Mask APIs | [MathWorks Documentation](https://www.mathworks.com/) |
-| Add annotations / notes | `add_block('built-in/Note', …)` | [MathWorks Documentation](https://www.mathworks.com/) |
-| Discover library paths | `find_system('SearchDepth',0,'Name',query)` | [MathWorks Documentation](https://www.mathworks.com/) |
-| Build and run simulation | `sim(model,'ReturnWorkspaceOutputs','on')` | [MATLAB Simulink Documentation](https://www.mathworks.com/) |
-| Evaluate free-form code | `evalc(codeStr)` (captured console) | [MATLAB Language Documentation](https://www.mathworks.com/) |
+### Complete Process Flow
 
-*These documented calls are stable across releases, unlike pixel-level GUI automation.*
+The following section provides a detailed step-by-step explanation of how Orion Agent processes user requests, from input to completion.
 
-### Technology Stack
+When a user enters a prompt like "Create a hello world script that prints 1 to 10", here's the complete workflow that occurs:
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| LLM | GPT-4o (OpenAI REST) or local Llama 3 served over HTTP | Reasoning + code generation |
-| MATLAB engine | `matlab.engine` for Python only if the agent is launched outside MATLAB; otherwise call APIs directly | Invokes MATLAB commands, opens/edits models |
-| Simulink programmatic API | `add_block`, `add_line`, `Simulink.BlockDiagram.arrangeSystem`, `sim`, `find_system`, `set_param` | Create & mutate diagrams |
-| Desktop Editor API | `matlab.desktop.editor.openDocument`, `save`, `insertText` | Open/modify .m, .mlx files programmatically |
-| HTTP client | `webwrite`, `webread` | Talk to the LLM endpoint |
-| UI | App Designer (`AgentAppChat.m`) | Enhanced chat pane + workflow visualization |
-| Tests | `matlab.unittest` | Regression and acceptance criteria |
-| Version control | Git | Track code and generated models |
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as AgentAppChat
+    participant Agent
+    participant LLM as llm.callGPT
+    participant Tools as ToolBox
+    participant FileSystem
+
+    User->>UI: Enter prompt & click Send
+    UI->>UI: Create background timer
+    UI->>Agent: processUserInput(prompt)
+    Agent->>Agent: Add to chat history
+    Agent->>LLM: Generate tool call
+    LLM-->>Agent: Return JSON response
+    Agent->>Agent: Parse JSON (jsondecode)
+    Agent->>Tools: dispatchTool(toolName, args)
+    Tools->>FileSystem: Create/modify files
+    FileSystem-->>Tools: Return result
+    Tools-->>Agent: Return result & status
+    Agent->>Agent: Log result
+    Agent->>UI: Return final response
+    UI->>User: Display result & update UI
+```
+
+### Step-by-Step Execution Flow
+
+1. **Entry Point**: User runs `launch_agent.m` which sets up paths, error handling, and launches the UI
+2. **UI Initialization**: `AgentAppChat` creates the interface and initializes the Agent instance
+3. **User Input**: User enters prompt and clicks Send button
+4. **Processing Setup**: 
+   - UI updates with user message
+   - Status changes to "Processing"
+   - Background timer starts to keep UI responsive
+5. **Agent Processing**:
+   - Agent adds prompt to chat history
+   - Builds LLM prompt with history and available tools
+   - Enters ReAct loop (limited to max 3 iterations)
+6. **LLM Decision**:
+   - Calls `llm.callGPT` to determine next action
+   - In debug mode, returns predefined responses based on request pattern
+   - In production, calls external API (OpenAI or Gemini)
+7. **Tool Execution**:
+   - Parses JSON response to get tool name and arguments
+   - Records tool call in history and logs
+   - Dispatches to appropriate tool via ToolBox
+   - For file creation, ensures workspace folder exists
+8. **Result Processing**:
+   - Tool returns structured result
+   - Agent records result in history
+   - Tracks modified files
+   - Determines if task is complete
+9. **Response Generation**:
+   - Creates final JSON response with summary, files, log
+   - Returns to UI for display
+10. **UI Updates**:
+    - Parses response
+    - Updates chat with summary
+    - Shows modified files in workflow log
+    - Resets status to "Ready"
+    - Cleans up timer resources
+
+### Detailed Tool Flow for File Creation
+
+When creating a file (like our hello world script), this detailed flow occurs:
+
+```mermaid
+flowchart TD
+    A[User sends request] --> B[Agent processes input]
+    B --> C{Debug mode?}
+    C -->|Yes| D[Return predefined response:\n{"tool": "open_or_create_file", "args": {...}}]
+    C -->|No| E[Call LLM API]
+    E --> F[Parse LLM response]
+    D --> G[Parse JSON response]
+    G --> H[Dispatch open_or_create_file tool]
+    H --> I[Create workspace directory if needed]
+    I --> J[Write content to file]
+    J --> K[Try to open in MATLAB editor]
+    K --> L[Return result to Agent]
+    L --> M[Update Agent history & logs]
+    M --> N[Generate final response]
+    N --> O[Display in UI]
+```
+
+### Core Components and Their Roles
+
+```mermaid
+classDiagram
+    class AgentAppChat {
+        +UIFigure
+        +Agent
+        +IsProcessing
+        +TaskTimer
+        +send_user_input_to_llm()
+        +processAgentRequest()
+        +processAgentResponse()
+        +updateChatHistory()
+        +updateWorkflowLog()
+    }
+    
+    class Agent {
+        +ToolBox
+        +chatHistory
+        +llmInterface
+        +toolLog
+        +modifiedFiles
+        +processUserInput()
+        +redactErrorsLocal()
+    }
+    
+    class ToolBox {
+        -tools
+        -toolDescriptions
+        +register()
+        +dispatchTool()
+        +getToolDescriptions()
+    }
+    
+    class LLMInterface {
+        +callGPT()
+        +getAPIConfig()
+    }
+    
+    class Tools {
+        +open_or_create_file()
+        +run_code_or_file()
+        +create_new_model()
+        +simulate_model()
+    }
+    
+    AgentAppChat --> Agent : owns
+    Agent --> ToolBox : uses
+    Agent --> LLMInterface : calls
+    ToolBox --> Tools : dispatches to
+```
+
+### ReAct Loop Implementation
+
+The core of Orion Agent is its implementation of the Reasoning-Acting (ReAct) loop pattern:
+
+```mermaid
+flowchart TB
+    Start[Start ReAct Loop] --> Think[Think: Call LLM to decide next action]
+    Think --> Act[Act: Execute chosen tool]
+    Act --> Observe[Observe: Record result]
+    Observe --> Decision{Task complete?}
+    Decision -->|No| Think
+    Decision -->|Yes| End[Return final response]
+```
+
+This pattern allows the agent to:
+1. Reason about the best approach to solve a problem
+2. Execute appropriate actions using MATLAB/Simulink tools
+3. Observe the results and determine next steps
+4. Continue until the task is complete or max iterations reached
+
+### Debug Mode vs. Production Mode
+
+```mermaid
+flowchart LR
+    Start[Agent Call] --> Check{API calls exceeded?}
+    Check -->|Yes| Debug[Debug Mode:\nPredefined responses]
+    Check -->|No| Production[Production Mode:\nReal LLM API call]
+    Debug --> Response[Return JSON tool call]
+    Production --> Response
+```
+
+In debug mode (default after 3 API calls), the system uses pattern matching on the user query to return appropriate predefined responses, allowing development and testing without API costs.
 
 ---
 
