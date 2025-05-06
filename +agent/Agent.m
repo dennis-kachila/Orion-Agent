@@ -100,7 +100,7 @@ classdef Agent < handle
                         response = jsonencode(continuationResponse);
                         return;
                     catch ME
-                        errorMsg = agent.utils.safeRedactErrors(ME);
+                        errorMsg = obj.redactErrorsLocal(ME);
                         fprintf('Error during continuation: %s\n', errorMsg);
                         
                         % Create error response
@@ -473,8 +473,9 @@ classdef Agent < handle
                     fullPrompt = llm.promptTemplates.buildPrompt(obj.chatHistory, obj.ToolBox.getToolDescriptions());
                     
                 catch ME
-                    % Handle errors using direct error handling
-                    errorMsg = agent.utils.safeRedactErrors(ME);
+                    % Handle errors using only local error redaction
+                    errorMsg = obj.redactErrorsLocal(ME);
+                    
                     fprintf('Error: %s\n', errorMsg);
                     obj.chatHistory(end+1) = struct('role', 'system', 'content', ...
                         sprintf('Error: %s', errorMsg));
@@ -566,6 +567,32 @@ classdef Agent < handle
         function files = getModifiedFiles(obj)
             % Get the list of files that were created or modified
             files = obj.modifiedFiles;
+        end
+    end
+    
+    methods (Access = private)
+        function errorMsg = redactErrorsLocal(~, ME)
+            % Local implementation of error redaction
+            msg = ME.message;
+            % Remove absolute Windows paths
+            msg = regexprep(msg, '[A-Za-z]:\\[^\s\n]*', '[REDACTED_PATH]');
+            % Remove OneDrive or user directory references
+            msg = regexprep(msg, 'OneDrive[^\s\n]*', '[REDACTED_ONEDRIVE]');
+            msg = regexprep(msg, 'Users\\[^\s\n]*', '[REDACTED_USER]');
+            % Remove email addresses
+            msg = regexprep(msg, '[\w\.-]+@[\w\.-]+', '[REDACTED_EMAIL]');
+            % Remove IP addresses
+            msg = regexprep(msg, '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', '[REDACTED_IP]');
+            % Remove API keys (common patterns)
+            msg = regexprep(msg, '(key-[a-zA-Z0-9]{32,})', '[REDACTED_API_KEY]');
+            msg = regexprep(msg, '(sk-[a-zA-Z0-9]{32,})', '[REDACTED_API_KEY]');
+            msg = regexprep(msg, 'AIza[a-zA-Z0-9_\-]{35}', '[REDACTED_API_KEY]');
+            
+            % Create error message with basic stack info
+            errorMsg = sprintf('Error: %s', msg);
+            if ~isempty(ME.stack)
+                errorMsg = sprintf('%s\nIn %s at line %d', errorMsg, ME.stack(1).name, ME.stack(1).line);
+            end
         end
     end
 end

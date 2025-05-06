@@ -163,12 +163,12 @@ classdef ToolBox < handle
                     
                 catch ME
                     % Handle tool execution errors
-                    errorMsg = agent.utils.safeRedactErrors(ME);
+                    errorMsg = obj.redactErrorsLocal(ME);
                     result = struct('error', errorMsg);
                 end
             catch ME
                 % Handle errors in tool dispatch
-                errorMsg = agent.utils.safeRedactErrors(ME);
+                errorMsg = obj.redactErrorsLocal(ME);
                 result = struct('error', errorMsg);
             end
         end
@@ -181,6 +181,23 @@ classdef ToolBox < handle
         function toolNames = getToolNames(obj)
             % Return names of all registered tools
             toolNames = keys(obj.tools);
+        end
+    end
+    
+    methods (Access = private)
+        function errorMsg = redactErrorsLocal(~, ME)
+            % Local implementation of error redaction
+            msg = ME.message;
+            % Remove absolute Windows paths
+            msg = regexprep(msg, '[A-Za-z]:\\[^\s\n]*', '[REDACTED_PATH]');
+            % Remove OneDrive or user directory references
+            msg = regexprep(msg, 'OneDrive[^\s\n]*', '[REDACTED_ONEDRIVE]');
+            msg = regexprep(msg, 'Users\\[^\s\n]*', '[REDACTED_USER]');
+            % Create error message with basic stack info
+            errorMsg = sprintf('Error: %s', msg);
+            if ~isempty(ME.stack)
+                errorMsg = sprintf('%s\nIn %s at line %d', errorMsg, ME.stack(1).name, ME.stack(1).line);
+            end
         end
     end
 end

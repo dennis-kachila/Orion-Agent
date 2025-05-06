@@ -24,23 +24,16 @@ end
 fprintf('Setting up paths...\n');
 setup_paths;
 
-% Add compatibility layer for safeRedactErrors in case of package path issues
-fprintf('Setting up compatibility layer for utilities...\n');
+% Add local error redaction function for compatibility
+fprintf('Setting up local error redaction utility...\n');
 try
-    % Check if safeRedactErrors can be resolved as a package function
-    try
-        testME = MException('TEST:Error', 'Test error message');
-        agent.utils.safeRedactErrors(testME);
-        fprintf('✓ agent.utils.safeRedactErrors is working properly\n');
-    catch
-        % Create a local copy as a fallback for now
-        fprintf('⚠ WARNING: Cannot resolve agent.utils.safeRedactErrors, creating a local fallback\n');
-        % Define the fallback function in our workspace
-        safeRedactErrors = @(ME)redactErrorsLocal(ME);
-        % Make it accessible globally
-        assignin('base', 'safeRedactErrors', safeRedactErrors);
-        fprintf('✓ Created fallback error redaction function\n');
-    end
+    % Create local fallback as the primary error redaction method
+    fprintf('Creating local error redaction function\n');
+    % Define the function in our workspace
+    safeRedactErrors = @(ME)redactErrorsLocal(ME);
+    % Make it accessible globally
+    assignin('base', 'safeRedactErrors', safeRedactErrors);
+    fprintf('✓ Created local error redaction function\n');
 catch 
     fprintf('⚠ WARNING: Could not set up error redaction utilities\n');
 end

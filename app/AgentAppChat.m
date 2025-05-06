@@ -98,23 +98,23 @@ classdef AgentAppChat < matlab.apps.AppBase
                 response = app.Agent.processUserInput(userInput);
                 
                 % Update UI from timer callback context
-                executeInUIContextIfAvailable(app.UIFigure, @() app.processAgentResponse(response));
-                executeInUIContextIfAvailable(app.UIFigure, @() app.setAgentStatus('Ready'));
+                AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.processAgentResponse(response));
+                AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.setAgentStatus('Ready'));
                 
                 % Check for model updates
                 if ~isempty(app.CurrentModelName)
-                    executeInUIContextIfAvailable(app.UIFigure, @() app.updateModelPreview(app.CurrentModelName));
+                    AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.updateModelPreview(app.CurrentModelName));
                 end
                 
             catch ME
                 % Handle errors
-                executeInUIContextIfAvailable(app.UIFigure, @() app.updateWorkflowLog(['Error: ', ME.message]));
-                executeInUIContextIfAvailable(app.UIFigure, @() app.updateChatHistory(['Agent error: ', ME.message], 'system'));
-                executeInUIContextIfAvailable(app.UIFigure, @() app.setAgentStatus('Error'));
+                AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.updateWorkflowLog(['Error: ', ME.message]));
+                AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.updateChatHistory(['Agent error: ', ME.message], 'system'));
+                AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.setAgentStatus('Error'));
             end
             
             % Reset processing state
-            executeInUIContextIfAvailable(app.UIFigure, @() app.finishProcessing());
+            AgentAppChat.executeInUIContextIfAvailable(app.UIFigure, @() app.finishProcessing());
         end
         
         % Button pushed function: StopButton
