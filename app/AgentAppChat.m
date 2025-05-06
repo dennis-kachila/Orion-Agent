@@ -564,4 +564,15 @@ classdef AgentAppChat < matlab.apps.AppBase
             delete(app.UIFigure)
         end
     end
+    
+    % Static helper methods
+    methods (Static)
+        function executeInUIContextIfAvailable(uiFigure, callback)
+            % Execute a callback in the UI context if the figure is still valid
+            if isvalid(uiFigure)
+                drawnow; % Refresh UI
+                callback();
+            end
+        end
+    end
 end

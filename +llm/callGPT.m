@@ -107,32 +107,40 @@ function response = callGPT(prompt)
 end
 
 function apiConfig = getAPIConfig()
-    % GETAPICONFIG Retrieves API configuration from settings
-    % Check if settings are loaded, if not load from file
+    % GETAPICONFIG Retrieves API configuration from environment variables
+    % This version prioritizes environment variables and doesn't rely on settings files
+    
     persistent config;
     
     if isempty(config)
-        % Try to load from llm_settings.mat
-        if exist('llm_settings.mat', 'file')
-            fprintf('Loading API configuration from llm_settings.mat\n');
-            try
-                load('llm_settings.mat', 'settings');
-                config = settings;
-            catch ME
-                fprintf('Error loading settings: %s\n', ME.message);
-                % Create default settings
-                config = struct('provider', 'openai', ...
-                                'model', 'gpt-4', ...
-                                'endpoint', 'https://api.openai.com/v1/chat/completions', ...
-                                'apiKey', '');
-            end
+        % Initialize default config
+        config = struct('provider', '', 'model', '', 'endpoint', '', 'apiKey', '');
+        
+        % Check for OpenAI API key
+        openaiKey = getenv('OPENAI_API_KEY');
+        if ~isempty(openaiKey)
+            fprintf('Using OpenAI API key from environment variable\n');
+            config.provider = 'openai';
+            config.model = 'gpt-4';
+            config.endpoint = 'https://api.openai.com/v1/chat/completions';
+            config.apiKey = openaiKey;
         else
-            % Create default settings
-            fprintf('No settings file found, using defaults\n');
-            config = struct('provider', 'openai', ...
-                            'model', 'gpt-4', ...
-                            'endpoint', 'https://api.openai.com/v1/chat/completions', ...
-                            'apiKey', '');
+            % Check for Gemini API key
+            geminiKey = getenv('GEMINI_API_KEY');
+            if ~isempty(geminiKey)
+                fprintf('Using Gemini API key from environment variable\n');
+                config.provider = 'gemini';
+                config.model = 'gemini-1.5-pro';
+                config.endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+                config.apiKey = geminiKey;
+            else
+                % No valid API keys found, default to debug mode
+                fprintf('No API keys found in environment variables\n');
+                config.provider = 'openai'; % Still need a default provider for debug mode
+                config.model = 'gpt-4';
+                config.endpoint = 'https://api.openai.com/v1/chat/completions';
+                config.apiKey = '';
+            end
         end
     end
     
