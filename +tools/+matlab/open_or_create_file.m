@@ -9,29 +9,89 @@ function result = open_or_create_file(fileName, content)
     %   result - Structure containing document object and status
     
     try
-        % Use absolute path if relative path is provided
-        if ~isempty(fileName) && ~ispc && fileName(1) ~= '/' || ispc && ~contains(fileName, ':')
-            fileName = fullfile(pwd, fileName);
+        fprintf('=== DEBUG START: open_or_create_file ===\n');
+        fprintf('Called with fileName: "%s"\n', fileName);
+        if nargin > 1
+            fprintf('Content provided: %d bytes\n', length(content));
+            if ~isempty(content)
+                fprintf('Content snippet: "%s..."\n', content(1:min(30, length(content))));
+            end
+        else
+            fprintf('No content provided (nargin = %d)\n', nargin);
+        end
+        
+        % Use more robust path handling for relative paths
+        if ~isempty(fileName) && (~ispc && fileName(1) ~= '/' || ispc && ~contains(fileName, ':'))
+            % Check if this is a path that should go to the workspace folder
+            if ~contains(fileName, filesep) || (ispc && ~contains(fileName, '\'))
+                fprintf('DEBUG: Simple filename detected without path - will place in workspace folder\n');
+                
+                % This is likely just a filename without a path, put it in the workspace folder
+                % Get the project root directory using the module location
+                thisFile = mfilename('fullpath');
+                fprintf('DEBUG: This function path: %s\n', thisFile);
+                
+                thisFolder = fileparts(thisFile);
+                moduleFolder = fileparts(thisFolder); % tools/+matlab folder
+                toolsFolder = fileparts(moduleFolder); % tools folder
+                projectRoot = fileparts(toolsFolder);  % project root folder
+                fprintf('DEBUG: Project root resolved to: %s\n', projectRoot);
+                
+                % Use the orion_workspace folder
+                workspaceFolder = fullfile(projectRoot, 'orion_workspace');
+                fprintf('DEBUG: Using workspace folder: %s\n', workspaceFolder);
+                
+                if ~exist(workspaceFolder, 'dir')
+                    fprintf("DEBUG: Workspace folder doesn't exist, creating it\n");
+                    [mkSuccess, mkMsg] = mkdir(workspaceFolder);
+                    if mkSuccess
+                        fprintf('Created workspace folder: %s\n', workspaceFolder);
+                    else
+                        fprintf('ERROR: Failed to create workspace folder: %s\n', mkMsg);
+                    end
+                end
+                
+                fileName = fullfile(workspaceFolder, fileName);
+                fprintf('DEBUG: Expanded filename to: %s\n', fileName);
+            else
+                % This is a relative path with directories, use standard behavior
+                oldFileName = fileName;
+                fileName = fullfile(pwd, fileName);
+                fprintf('DEBUG: Relative path detected, expanded from "%s" to "%s"\n', oldFileName, fileName);
+            end
+        else
+            fprintf('DEBUG: Using provided absolute path: %s\n', fileName);
         end
         
         fprintf('Opening/creating file: %s\n', fileName);
         
         % Check if file exists
         fileExists = exist(fileName, 'file');
-        if fileExists
+        if fileExists > 0
             fileExistsStr = 'Yes';
         else
             fileExistsStr = 'No';
         end
-        fprintf('File exists: %s\n', fileExistsStr);
+        fprintf('File exists: %s (return value: %d)\n', fileExistsStr, fileExists);
         
         % Create directory if needed
-        [fileDir, ~, ~] = fileparts(fileName);
+        [fileDir, filePart, fileExt] = fileparts(fileName);
+        fprintf('DEBUG: File parts - Dir: "%s", Name: "%s", Ext: "%s"\n', fileDir, filePart, fileExt);
+        
         if ~isempty(fileDir) && ~exist(fileDir, 'dir')
             fprintf('Creating directory: %s\n', fileDir);
             [success, msg] = mkdir(fileDir);
             if ~success
+                fprintf('ERROR: Failed to create directory: %s. Error: %s\n', fileDir, msg);
                 error('Failed to create directory: %s. Error: %s', fileDir, msg);
+            else
+                fprintf('DEBUG: Directory created successfully\n');
+            end
+        else
+            if isempty(fileDir)
+                fprintf('DEBUG: No directory part in path\n');
+            else
+                fprintf('DEBUG: Directory already exists: %s\n', fileDir);
             end
         end
         
