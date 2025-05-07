@@ -69,54 +69,21 @@ function response = callGPT(prompt)
         fprintf('API call stats: No previous calls in this session\n');
     end
     
-    % Debug mode - set to false to make actual API calls
-    % Force debug mode in these cases:
-    % 1. API key is empty
-    % 2. We've already hit rate limits multiple times (3+)
-    % 3. We've exceeded total session limit
-    % 4. We've exceeded rate limit
-    debugMode = false;
-    
-    if isempty(apiConfig.apiKey)
-        debugMode = true;
-        fprintf('No API key available: Switching to debug mode\n');
-    elseif rateLimit429Count >= 3
-        debugMode = true;
-        fprintf('Multiple rate limits hit (%d times): Switching to debug mode\n', rateLimit429Count);
-    elseif apiCallCount >= MAX_API_CALLS
-        debugMode = true;
-        fprintf('API CALL SESSION LIMIT REACHED (%d/%d): Switching to debug mode\n', apiCallCount, MAX_API_CALLS);
-    elseif recentCalls >= MAX_QPM
-        debugMode = true;
-        fprintf('API RATE LIMIT REACHED (%d calls in last minute): Switching to debug mode\n', recentCalls);
-    end
-    
-    % Keep track of API call times for rate limiting
-    persistent lastCallTime;
-    if isempty(lastCallTime)
-        lastCallTime = datetime('now') - hours(1); % Initialize with past time
-    end
-    
-    % Rate limiting constants - ensure at least this many seconds between calls
-    persistent MIN_DELAY_SECONDS;
-    if isempty(MIN_DELAY_SECONDS)
-        MIN_DELAY_SECONDS = 120; % Default to 2 minutes between calls for Gemini
-        
-        % Use a shorter delay for OpenAI
-        if strcmpi(apiConfig.provider, 'openai')
-            MIN_DELAY_SECONDS = 30;
-        end
-    end
+    % Get debug mode setting from centralized Config
+    debugMode = agent.Config.useDebugAPIResponse();
     
     if debugMode
+        fprintf('Debug mode is active: Using hardcoded response instead of making API calls\n');
+        
         % Generate a properly formatted JSON response that the agent can use
         fprintf('DEBUG MODE: Generating a hardcoded test response instead of calling the API\n');
         
-        % Extract user query for context
-        userQuery = extractUserQuery(prompt);
-        fprintf('User query: %s\n', userQuery);
+        % Extract user query for context (simplified, doesn't need to work perfectly in debug mode)
+        userQuery = "Hardcoded test query - no actual API calls made";
+        fprintf('Testing with hardcoded response for query: %s\n', userQuery);
         
         % Use a hardcoded response for testing tool chaining
+        % String concatenation with proper syntax (no trailing semicolon)
         response = [
             '{',...
             '"summary": "Created a MATLAB script to plot a sine wave and its derivative, and then executed it.",',...
@@ -132,14 +99,14 @@ function response = callGPT(prompt)
             '  "open_file(plot_sine_and_derivative.m, ...)",',...
             '  "run_code_or_file(plot_sine_and_derivative.m)"',...
             ']',...
-            '}';
+            '}'
         ];
         
         fprintf('Hardcoded response ready for testing tool chaining\n');
         return;
     end
     
-    % Continue with real API calls when not in debug mode
+    % Continue with real API calls (this code will never execute in test mode)
     fprintf('Making actual API call to LLM service...\n');
     
     % Check time since last API call for rate limiting

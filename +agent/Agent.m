@@ -346,10 +346,11 @@ classdef Agent < handle
                         % Now execute the tools if we're in debug mode
                         fprintf('Found %d additional tools to execute\n', length(toolsToExecute));
                         
-                        % In debug mode, execute without user confirmation
-                        debugMode = true;
+                        % Get debug setting from centralized config
+                        autoExecute = agent.Config.autoExecuteTools();
                         
-                        if debugMode && ~isempty(toolsToExecute)
+                        if autoExecute && ~isempty(toolsToExecute)
+                            fprintf('Auto-execute enabled: Will execute all tool calls without confirmation\n');
                             % Wait a moment for any open_file operations to complete
                             pause(0.5);
                             
