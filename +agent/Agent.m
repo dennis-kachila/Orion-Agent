@@ -44,7 +44,7 @@ classdef Agent < handle
                     'Your job is to help users write, debug, and understand MATLAB code and Simulink models.\n', ...
                     'Always respond in JSON format for tool calls.\n', ...
                     'Example: {"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
-                    'If you need to run code, use the run_code_file tool.\n', ...
+                    'If you need to run a code file, use the run_code_file tool.\n', ...
                     'If you are unsure, ask the user for clarification.\n', ...
                     'Be concise and helpful.'
                 ]);
@@ -169,15 +169,10 @@ classdef Agent < handle
             %{ 
 
             ReAct = Reasoning + Acting
-
             In agent design for large‑language‑model systems, ReAct refers to a loop in which the model:
-
             1. Reasons about the user’s request and the current state, deciding what to do next.
-
             2. Acts by calling an external tool or function (e.g., add_block, sim).
-
             3. Observes the tool’s result (success, error message, numeric output).
-
             4. Feeds that observation back into its next step of Reasoning, and the cycle repeats until the goal is reached or the agent stops.
              
             
@@ -325,16 +320,17 @@ classdef Agent < handle
                                         
                                         % If the tool is run_code_file and it's a file
                                         if strcmp(toolName, 'run_code_file')
-                                            % Prepare a tool call struct for this log entry
+                                            fprintf('DEBUG: Parsing run_code_file call: %s\n', argsStr);
                                             fileToRun = strtrim(argsStr);
+                                            
                                             if endsWith(fileToRun, '.m')
-                                                % It's a file to run
+                                                % It's a file to run - create structure with only required fileName parameter
                                                 toolsToExecute{end+1} = struct('tool', 'run_code_file', ...
-                                                    'args', struct('fileName', fileToRun, 'isFile', true));
+                                                    'args', struct('fileName', fileToRun));
                                             else
-                                                % It's code to run
+                                                % It's code to run - create structure with only required codeStr parameter
                                                 toolsToExecute{end+1} = struct('tool', 'run_code_file', ...
-                                                    'args', struct('codeStr', fileToRun, 'isFile', false));
+                                                    'args', struct('codeStr', fileToRun));
                                             end
                                         % Add support for open_or_create_file tool (previously incorrectly referenced as open_file)
                                         elseif strcmp(toolName, 'open_or_create_file')
@@ -416,73 +412,6 @@ classdef Agent < handle
                                             else
                                                 fprintf('  fileName: MISSING\n');
                                             end
-                                            
-                                            if isfield(execTool.args, 'content')
-                                                fprintf('  content length: %d bytes\n', length(execTool.args.content));
-                                                fprintf('  content snippet: %s\n', execTool.args.content(1:min(50, length(execTool.args.content))));
-                                                
-                                                % Ensure the file is created properly using standard MATLAB file I/O
-                                                % This runs before dispatch, but doesn't bypass the ToolBox mechanism
-                                                try
-                                                    % Create the file within the normal flow
-                                                    fprintf('DEBUG: Ensuring file creation before tool dispatch\n');
-                                                    
-                                                    % Make sure directory exists
-                                                    [fileDir, ~, ~] = fileparts(execTool.args.fileName);
-                                                    if ~isempty(fileDir) && ~exist(fileDir, 'dir')
-                                                        [mkSuccess, mkMsg] = mkdir(fileDir);
-                                                        if ~mkSuccess
-                                                            fprintf('ERROR: Failed to create directory: %s\n', mkMsg);
-                                                        end
-                                                    end
-                                                    
-                                                    % Write the content to the file
-                                                    fid = fopen(execTool.args.fileName, 'w');
-                                                    if fid == -1
-                                                        fprintf('ERROR: Could not open file for writing: %s\n', execTool.args.fileName);
-                                                    else
-                                                        % Handle escaped newlines in content string
-                                                        content = execTool.args.content;
-                                                        
-                                                        % Replace escaped newlines with actual newlines
-                                                        content = regexprep(content, '\\n', sprintf('\n'));
-                                                        
-                                                        % Write the properly formatted content
-                                                        bytesWritten = fprintf(fid, '%s', content);
-                                                        fclose(fid);
-                                                        fprintf('DEBUG: Wrote %d bytes to file before tool dispatch\n', bytesWritten);
-                                                        
-                                                        % Verify file exists now
-                                                        if exist(execTool.args.fileName, 'file')
-                                                            fprintf('DEBUG: Verified file exists: %s\n', execTool.args.fileName);
-                                                            
-                                                            % Add to modified files list
-                                                            if ~ismember(execTool.args.fileName, obj.modifiedFiles)
-                                                                obj.modifiedFiles{end+1} = execTool.args.fileName;
-                                                            end
-                                                            
-                                                            % Open file in MATLAB editor
-                                                            try
-                                                                fprintf('DEBUG: Opening file in MATLAB editor\n');
-                                                                editorDoc = matlab.desktop.editor.openDocument(execTool.args.fileName);
-                                                                if ~isempty(editorDoc)
-                                                                    fprintf('DEBUG: File successfully opened in editor\n');
-                                                                else
-                                                                    fprintf('DEBUG: Editor returned empty document handle\n');
-                                                                end
-                                                            catch editorErr
-                                                                fprintf('DEBUG: Error opening file in editor: %s\n', editorErr.message);
-                                                            end
-                                                        else
-                                                            fprintf('ERROR: File still does not exist after writing: %s\n', execTool.args.fileName);
-                                                        end
-                                                    end
-                                                catch fileErr
-                                                    fprintf('ERROR: Exception during file creation: %s\n', fileErr.message);
-                                                end
-                                            else
-                                                fprintf('  content: MISSING\n');
-                                            end
                                         end
                                         
                                         % Check if the file exists for run_code_file
@@ -499,8 +428,6 @@ classdef Agent < handle
                                             if exist(fullPath, 'file')
                                                 fprintf('File %s exists, will run it\n', fullPath);
                                                 execTool.args.fileName = fullPath;
-                                                % Make sure isFile is set to true as a boolean - MATLAB expects this format
-                                                execTool.args.isFile = true;
                                             else
                                                 fprintf('Warning: File %s does not exist, cannot run it\n', fullPath);
                                                 continue;  % Skip to next tool
@@ -510,17 +437,36 @@ classdef Agent < handle
                                         % Execute the tool with enhanced debugging
                                         fprintf('DEBUG: About to dispatch tool: %s with complete args: %s\n', execTool.tool, jsonencode(execTool.args));
                                         
-                                        % Add debug statement specifically for the isFile parameter type
-                                        if strcmp(execTool.tool, 'run_code_file') && isfield(execTool.args, 'isFile')
-                                            fprintf('DEBUG: isFile parameter type: %s, value: %s\n', class(execTool.args.isFile), mat2str(execTool.args.isFile));
+                                        % Debug statement for run_code_file to ensure it has the right parameters
+                                        if strcmp(execTool.tool, 'run_code_file')
+                                            fprintf('DEBUG: run_code_file being called with fileName: %s\n', execTool.args.fileName);
                                         end
                                         
                                         % Use the normal dispatch method
                                         try
                                             [toolResult, isDoneLocal] = obj.ToolBox.dispatchTool(execTool.tool, execTool.args);
+                                            
+                                            % Create default toolResult structure if missing required fields
+                                            if ~isstruct(toolResult)
+                                                fprintf('Converting non-struct toolResult to struct\n');
+                                                toolResult = struct('output', toolResult);
+                                            end
+                                            
+                                            % Ensure status field exists
+                                            if ~isfield(toolResult, 'status')
+                                                fprintf('Adding default status field to toolResult\n');
+                                                toolResult.status = 'success';
+                                            end
+                                            
+                                            % Now safe to access the status field
+                                            fprintf('Log tool execution completed with %s status\n', toolResult.status);
+                                            
                                             fprintf('DEBUG: Tool dispatch completed with isDone=%d\n', isDoneLocal);
+                                            % Check if status field exists before accessing it
                                             if isfield(toolResult, 'status')
-                                                fprintf('DEBUG: Tool execution status: %s\n', toolResult.status);
+                                                fprintf('Log tool execution completed with %s status\n', toolResult.status);
+                                            else
+                                                fprintf('Log tool execution completed (status field not present)\n');
                                             end
                                             if isfield(toolResult, 'output')
                                                 fprintf('DEBUG: Tool output: %s\n', toolResult.output);
@@ -624,9 +570,8 @@ classdef Agent < handle
                             
                             fprintf('File opened successfully, writing content (%d characters)\n', length(toolCall.args.content));
                             bytesWritten = fprintf(fid, '%s', toolCall.args.content);
-                            fprintf('Wrote %d bytes to file\n', bytesWritten);
-                            
                             fclose(fid);
+                            fprintf('Wrote %d bytes to file\n', bytesWritten);
                             
                             % Verify file was created
                             if exist(fullFilePath, 'file')
@@ -673,7 +618,8 @@ classdef Agent < handle
                                         runResult = tools.matlab.run_code_file(runCodeArgs.codeStr);
                                         
                                         % Log the result
-                                        if isfield(runResult, 'status') && strcmp(runResult.status, 'success')
+                                        % Check for success based on existence of output field and absence of error field
+                                        if isfield(runResult, 'output') && ~isfield(runResult, 'error')
                                             fprintf('Code execution successful:\n%s\n', runResult.output);
                                             
                                             % Add to tool log
@@ -681,7 +627,12 @@ classdef Agent < handle
                                                                      'args', runCodeArgs, ...
                                                                      'result', runResult);
                                         else
-                                            fprintf('Code execution failed: %s\n', runResult.error);
+                                            % Function returned an error
+                                            if isfield(runResult, 'error')
+                                                fprintf('Code execution failed: %s\n', runResult.error);
+                                            else
+                                                fprintf('Code execution failed with unknown error\n');
+                                            end
                                         end
                                     catch runCodeErr
                                         fprintf('Error executing run_code_file: %s\n', runCodeErr.message);
@@ -750,7 +701,7 @@ classdef Agent < handle
                     % 2. We executed a run_code_file command successfully
                     % 3. We've handled special cases like "hello world" script
                     if isDone || ...
-                       (strcmp(toolCall.tool, 'run_code_file') && isfield(result, 'status') && strcmp(result.status, 'success')) || ...
+                       (strcmp(toolCall.tool, 'run_code_file') && isfield(result, 'output') && ~isfield(result, 'error')) || ...
                        (contains(lower(userText), 'hello world') && strcmp(toolCall.tool, 'run_code_file'))
                         
                         fprintf('Task completed successfully, generating final response\n');

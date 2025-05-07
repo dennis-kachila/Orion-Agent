@@ -1,29 +1,29 @@
-function result = run_code_file(input)
+function result = run_code_file(fileName)
     % RUN_CODE_FILE Execute a named .m file
     % 
     % Inputs:
-    %   input - Path to .m file
+    %   fileName - Path to .m file
     %
     % Output:
     %   result - Structure containing execution output and status
     
     try
         % Check if file exists
-        if ~exist(input, 'file')
-            error('File does not exist: %s', input);
+        if ~exist(fileName, 'file')
+            error('File does not exist: %s', fileName);
         end
         
         % Input is a file path
-        fprintf('Running MATLAB file: %s\n', input);
+        fprintf('Running MATLAB file: %s\n', fileName);
         
         % Capture output from file execution
-        commandStr = sprintf('run(''%s'')', input);
+        commandStr = sprintf('run(''%s'')', fileName);
         output = evalc(commandStr);
         
         % Return result
         result = struct('status', 'success', ...
                        'source', 'file', ...
-                       'fileName', input, ...
+                       'fileName', fileName, ...
                        'output', output);
         
         fprintf('File execution completed successfully\n');
@@ -34,7 +34,7 @@ function result = run_code_file(input)
         
         result = struct('status', 'error', ...
                        'source', 'file', ...
-                       'fileName', input, ...
+                       'fileName', fileName, ...
                        'error', errorMsg);
     end
 end
