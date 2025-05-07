@@ -17,245 +17,180 @@ Here is how the UI looks:
 >Below is a screenshot of the app designed in App Designer:
 ![Orion Agent UI App Designer](Layout/app_ui.png)
 
-## Project Structure
-
-```
-orion-ai-agent-mab/
-│
-├── +agent/                  % core decision loop
-│   ├── Agent.m              % ReAct controller; owns chat history
-│   ├── ToolBox.m            % registers callable tools
-│   └── utils/
-│       ├── redactErrors.m   % strips stack traces before LLM sees them
-│       └── safeRedactErrors.m
-│
-├── +tools/                  % organized tool categories
-│   ├── +general/            % general utilities
-│   │   └── doc_search.m     % search documentation
-│   │
-│   ├── +matlab/             % MATLAB-specific tools
-│   │   ├── check_code_lint.m
-│   │   ├── commit_git_repo.m
-│   │   ├── get_workspace_var.m
-│   │   ├── open_or_create_file.m
-│   │   ├── read_file_content.m
-│   │   ├── run_code_or_file.m
-│   │   ├── run_unit_tests.m
-│   │   ├── set_workspace_var.m
-│   │   └── write_file_contents.m
-│   │
-│   └── +simulink/           % Simulink-specific tools
-│       ├── auto_layout.m
-│       ├── close_current_model.m
-│       ├── connect_block_ports.m
-│       ├── create_new_model.m
-│       ├── disconnect_block_ports.m
-│       ├── get_block_params.m
-│       ├── insert_library_block.m
-│       ├── open_existing_model.m
-│       ├── remove_block.m
-│       ├── save_current_model.m
-│       ├── set_block_params.m
-│       └── simulate_model.m
-│
-├── +llm/                    % LLM interaction components
-│   ├── callGPT.m            % API client for OpenAI, Gemini, or local models
-│   └── promptTemplates.m    % System & few-shot templates
-│
-├── app/
-│   └── AgentChat.m          % App Designer UI converted to .m file
-│
-├── orion_workspace/         % Working directory for agent-generated files
-│   ├── debug_hello.m
-│   └── hello_count.m
-│
-└── tests/
-    └── t_basic.m            % ensures each tool works on clean MATLAB
-```
-
 ## Setup and Configuration
 
-1. Clone the repo into a regular MATLAB project (so paths auto-load).
-2. Run `setup_paths.m` to ensure all required directories are added to MATLAB's path.
-3. Set up your API key using one of the following methods:
-   - **Environment variable**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY` as environment variables
-   - **Settings file**: Run `llm_settings.m` which will prompt you for your API key and save it securely
-   - **Batch file**: Run `set_api_key.bat` on Windows systems to set your environment variables
-   
-   > **⚠️ SECURITY WARNING**: Never hardcode API keys directly in source code files. Always use environment variables or a settings file that is excluded from version control (.gitignore).
+1.  **Clone the Repository**: Clone the repo into a regular MATLAB project (so paths auto-load).
+2.  **Setup Paths**: Run `setup_paths.m` from the MATLAB command window to ensure all required directories are added to MATLAB's path.
+    ```matlab
+    setup_paths
+    ```
+3.  **Configure API Key**: Set up your API key for the LLM. Orion Agent primarily uses Gemini or OpenAI.
+    *   **Environment Variable (Recommended)**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY`.
+        *   On Windows, you can use `set_api_key.bat` (edit it first with your key) or set it manually in System Environment Variables.
+        *   On macOS/Linux: `export GEMINI_API_KEY=your_api_key_here`
+    > **⚠️ SECURITY WARNING**: Never hardcode API keys directly in source code files. Always use environment variables.
 
-4. Start the application:
-   - Run `launch_agent.m` to start the Orion Agent
-   - Or open and run `app/AgentChat.m` in MATLAB for the UI interface
-
-> **Note**: The original App Designer file (.mlapp) has been converted to a standard MATLAB file (.m) for better compatibility. The keyboard shortcuts for sending messages have been removed to address compatibility issues with some MATLAB versions. Use the Send button to submit your requests.
+4.  **Verify (Optional but Recommended)**: Run the basic tests to ensure tool functionality.
+    ```matlab
+    runtests('tests/t_basic.m')
+    ```
+5.  **Start the Application**:
+    *   Run `launch_agent.m` from the MATLAB command window to start the Orion Agent UI.
+    ```matlab
+    launch_agent
+    ```
+    *   Alternatively, you can open and run `app/AgentAppChat.m` in MATLAB.
 
 ## Special Commands
 
 Orion Agent supports special commands that control its behavior:
 
-1. **@agent Continue**: Continues the previous conversation or task
-   - Usage: `@agent Continue` - Continues with default continuation prompt
-   - Usage: `@agent Continue: <custom prompt>` - Continues with a custom prompt
-   
-   Example: `@agent Continue: Continue to iterate?` will continue the previous task with additional context
+1.  **@agent Continue**: Continues the previous conversation or task.
+    *   Usage: `@agent Continue` - Continues with default continuation prompt.
+    *   Usage: `@agent Continue: <custom prompt>` - Continues with a custom prompt.
+    Example: `@agent Continue: Now try to optimize the gain parameter.`
 
-## Project Management
-What is remaining to be done:
-- ✅ HIGH PRIORITY: Separate the MATLAB and Simulink tools (done)
-- ✅ HIGH PRIORITY: Capture errors and warnings in the log and give back to the LLM (done)
-- ✅ Add more relevant tools to the toolbox (done for core MATLAB/Simulink workflows; more can be added as needed)
-- ⬜ HIGH PRIORITY: Add more examples to the examples folder (pending)
-- ⬜ Add how people can contribute to the project (pending)
-- ⬜ HIGH PRIORITY: Enhance the documentation search tool since it is key for agents to find relevant information quickly (pending)
-- ⬜ Add more examples to the examples folder (pending)
-- ⬜ Add more robust and diverse few-shot examples for LLM prompt engineering (pending)
-- ⬜ Add more unit and integration tests for new and edge-case tool behaviors (pending)
-- ⬜ Improve UI accessibility and add visual cues for errors/success (pending)
-- ⬜ Add support for user-configurable tool/plugin registration (pending)
-- ⬜ Add support for multi-turn, multi-user chat history (pending)
-- ⬜ Add more advanced error recovery and self-healing strategies for the agent (pending)
-- ⬜ Add CI/CD pipeline for automated testing and linting (pending)
-- ⬜ Add internationalization/localization support (pending)
-- ⬜ Add more detailed developer and user documentation (pending)
-- ⬜ Add performance benchmarks and profiling (pending)
-- ⬜ Add telemetry/analytics (opt-in) for usage and error tracking (pending)
-- ⬜ Add support for additional LLM providers and model selection (pending)
-- ⬜ Add advanced Simulink model validation and reporting (pending)
-- ⬜ Add more granular user permissions and security controls (pending)
+## Project Management (To-Do List)
+(Status last reviewed: May 7, 2023. Based on project structure and Agent.m analysis.)
+- ✅ HIGH PRIORITY: Separate the MATLAB and Simulink tools (done - tools are organized into `+tools/+matlab` and `+tools/+simulink`)
+- ✅ HIGH PRIORITY: Capture errors and warnings in the log and give back to the LLM (done - `Agent.m` includes error capturing, redaction, and feedback to LLM)
+- ✅ Add more relevant tools to the toolbox (done for core MATLAB/Simulink workflows as seen in `+tools/`; system is extensible for more tools)
+- ⬜ HIGH PRIORITY: Add more examples - currently there's no dedicated examples folder, consider creating an `examples/` directory with sample workflows (pending)
+- ⬜ Add how people can contribute to the project (pending - "Extensibility" section provides developer guidance, but a formal "Contributing.md" or dedicated section with guidelines is pending)
+- ⬜ HIGH PRIORITY: Enhance the documentation search tool (`+tools/+general/doc_search.m`) since it is key for agents to find relevant information quickly (pending - current implementation provides basic search functionality but needs to be expanded)
+- ⬜ Add more robust and diverse few-shot examples for LLM prompt engineering (pending - `Agent.m` constructor includes basic examples; more diverse and robust examples are pending)
+- ⬜ Add more unit and integration tests for new and edge-case tool behaviors (pending - `tests/t_basic.m` provides basic tests; comprehensive coverage for new tools and edge cases is pending)
+- ⬜ Improve UI accessibility and add visual cues for errors/success (pending - "Recent Improvements" note UI redesign and some visual feedback; however, a full review against accessibility standards and implementation of comprehensive, distinct visual cues for various error/success states is pending)
+- ⬜ Add support for user-configurable tool/plugin registration (pending - current tool registration requires code modification in `+agent/ToolBox.m`)
+- ⬜ Add support for multi-turn, multi-user chat history (pending - multi-turn history for a single user is implemented in `Agent.m`; multi-user support is pending)
+- ⬜ Add more advanced error recovery and self-healing strategies for the agent (pending - `Agent.m` feeds errors to LLM for recovery; more advanced, autonomous self-healing strategies are pending)
+- ⬜ Add CI/CD pipeline for automated testing and linting (pending - "Extensibility" section mentions this as a future step)
+- ⬜ Add internationalization/localization support (pending - no evidence of I18N/L10N features)
+- ⬜ Add more detailed developer and user documentation (pending - `docs/` folder and main README provide good documentation; continuous improvement for more in-depth guides, API references, and developer-specific documentation is pending)
+- ⬜ Add performance benchmarks and profiling (pending - "Recent Improvements" mention optimizations, but formal benchmarks and profiling tools are pending)
+- ⬜ Add telemetry/analytics (opt-in) for usage and error tracking (pending - no evidence of telemetry features)
+- ⬜ Add support for additional LLM providers and model selection (pending - `Agent.m` and `set_api_key.bat` suggest support for Gemini/OpenAI; dynamic, user-configurable model selection from a broader range of providers is pending)
+- ⬜ Add advanced Simulink model validation and reporting (pending - "Safety Guidelines" mention `Simulink.BlockDiagram.validate`; more advanced, automated validation routines and comprehensive reporting features are pending)
+- ⬜ Add more granular user permissions and security controls (pending - no evidence of granular permission system beyond MATLAB user permissions)
 
 ## API Key Security
 
 For secure handling of API keys, follow these best practices:
 
-1. **Environment Variables**: Set API keys as environment variables (most secure method)
-   ```
-   # Windows
-   set GEMINI_API_KEY=your_api_key_here
-   
-   # macOS/Linux
-   export GEMINI_API_KEY=your_api_key_here
-   ```
-
-2. **Settings File**: Use the provided `llm_settings.m` script which will:
-   - Prompt for your API key
-   - Store it in a .mat file that should be added to .gitignore
-   - Clear the key from workspace after saving
-
-3. **Never commit API keys**: Ensure .gitignore includes:
-   ```
-   # API key settings
-   llm_settings.mat
-   ```
-
-4. **Rotate compromised keys**: If you accidentally commit an API key:
-   - Immediately revoke and regenerate the key
-   - Clear git history or use git-filter-branch to remove sensitive data
-   - Consider using git secrets or pre-commit hooks to prevent future leaks
+1.  **Environment Variables (Most Secure)**:
+    *   Windows: `set GEMINI_API_KEY=your_api_key_here` (or use System Properties)
+    *   macOS/Linux: `export GEMINI_API_KEY=your_api_key_here`
+2.  **Never Commit API Keys**: Ensure `.gitignore` includes any local configuration files.
+3.  **Rotate Compromised Keys**: If a key is accidentally exposed, revoke it immediately and generate a new one. Clean your Git history if necessary.
 
 ## Running Tests
 
 Run the included tests to confirm all tools work with your MATLAB configuration:
-
 ```matlab
-runtests('tests');
+runtests('tests'); % Runs all tests in the 'tests' folder
+% or for a specific test file:
+% runtests('tests/t_basic.m');
 ```
 
 ## Usage Example
 
 In the AgentChat UI, you can type natural language requests like:
 
-For MaTLAB:
+**For MATLAB:**
 > "Create a MATLAB script that says hello world and prints numbers from 1 to 10."
-> 
-For Simulink:
+
+**For Simulink:**
 > "Create a model with a Sine Wave feeding a Scope and simulate for 5 s."
 
-Orion Agent will execute the appropriate sequence of actions:
-1. Create a new model
-2. Add Sine Wave and Scope blocks
-3. Connect them
-4. Arrange the layout
-5. Run a simulation
-6. Show the results and model preview
+Orion Agent will then execute the appropriate sequence of actions, such as:
+1. Create a new model or script.
+2. Add blocks (for Simulink) or write code.
+3. Connect blocks or define variables.
+4. Arrange layout (for Simulink).
+5. Run a simulation or execute the script.
+6. Show the results and model/script preview.
 
-To continue working on the same task, you can use:
-
-> "@agent Continue: Now add a Gain block between Sine Wave and Scope"
+To continue working on the same task, use the `@agent Continue` command:
+> "@agent Continue: Now add a Gain block between Sine Wave and Scope and set its value to 5."
 
 ## Response Format
 
-Orion Agent returns responses in a structured JSON format:
-
+Orion Agent typically returns responses in a structured JSON format (internally, and for logging), which includes:
 ```json
 {
   "summary": "Brief description of what was accomplished",
   "files": ["file1.m", "model1.slx", ...],
-  "snapshot": "data:image/png;base64,...",
+  "snapshot": "data:image/png;base64,...", // For Simulink models
   "log": ["tool-call-1", "tool-call-2", ...]
 }
 ```
-
-This format includes:
-- A summary of the completed task
-- List of files that were created or modified
-- A base64-encoded PNG snapshot of any Simulink model
-- A log of the tool calls that were executed
+The UI then presents this information in a user-friendly way.
 
 ## Troubleshooting
 
 If you encounter issues:
+1.  **App Cannot Be Found**: Ensure you are using `app/AgentAppChat.m`.
+2.  **Keyboard Shortcuts**: Use the "Send" button. KeyPressFcn was removed for compatibility.
+3.  **API Key Issues**:
+    *   Follow API Key Security guidelines.
+    *   Verify environment variables.
+    *   Check MATLAB console for warnings.
+4.  **Missing Dependencies**: Ensure required toolboxes (e.g., Simulink) are installed.
+5.  **`@agent Continue` Not Working**: Ensure there's a previous conversation.
+6.  **UI Display Issues**: Try resizing; ensure MATLAB display scaling matches system.
+7.  **Error Messages**: Review error messages for context; they are designed to help the LLM recover.
 
-1. **App cannot be found**: Make sure you are using the `.m` file version (`app/AgentChat.m`) rather than the `.mlapp` file.
+## Runtime Flow (ReAct Loop)
 
-2. **Keyboard shortcuts not working**: Use the Send button instead of keyboard shortcuts. The KeyPressFcn property has been removed for compatibility with various MATLAB versions.
+Orion Agent employs a ReAct (Reasoning-Acting) loop:
 
-3. **API Key issues**: 
-   - Follow the API Key Security guidelines above to properly set up your key
-   - Verify the environment variable or settings file is correctly configured
-   - Check the MATLAB console for any warnings about missing API keys
-   - If you recently changed API providers, ensure the corresponding environment variable is set
+```mermaid
+graph TD
+    U(User Prompt) --> PB(PromptBuilder: User Prompt + History + Tool List)
+    PB --> LLM(callGPT: LLM Decides Action)
+    LLM -->|JSON: tool, args| DP(Dispatcher: Validate & Get Tool)
+    DP -->|Error| LLM % Tool not found, LLM reconsiders
+    DP --> TOOL(Execute Tool: e.g., +tools/simulink/create_new_model)
+    TOOL --> RESULT(Result: String, Struct, PNG, Error)
+    RESULT --> HIST(Update History: Thought → Action → Observation)
+    HIST --> DEC{Task Complete?}
+    DEC -->|No| PB
+    DEC -->|Yes| RESP(Format Final Response for UI)
+    RESP --> UI(Update AgentChat UI)
+```
 
-4. **Missing dependencies**: Some functionality may require specific MATLAB toolboxes. Ensure you have Simulink and any other required toolboxes installed.
-
-5. **@agent Continue not working**: Make sure the agent has a previous conversation to continue. This command cannot be used as the first interaction.
-
-6. **UI display issues**: If the interface appears distorted or buttons are misaligned:
-   - Try resizing the application window
-   - Ensure your MATLAB display scaling settings match your system settings
-   - The latest UI improvements should resolve most display issues on various screen resolutions
-
-7. **Error messages not helpful**: Recent improvements now provide more descriptive error messages and include suggestions for resolving common issues.
-
-## Runtime Flow
-
-The enhanced ReAct loop in Agent.m follows this pattern:
-1. PromptBuilder merges user text, truncated history, and tool list
-2. LLM generates a tool call with arguments in JSON format
-3. Dispatcher verifies the tool exists in ToolBox
-4. The tool is executed and returns a result (string, struct, PNG)
-5. Results are added to history and the loop continues until the task is complete
-6. Error handling now includes detailed context to help the LLM recover from failures
+1.  **Prompt Building**: User input, chat history, and available tool descriptions are compiled into a prompt for the LLM.
+2.  **LLM Decision**: The LLM (`llm.callGPT`) processes the prompt and returns a JSON object specifying the tool to use and its arguments.
+3.  **Dispatch**: The `ToolBox` validates the tool and arguments.
+4.  **Tool Execution**: The selected tool function is called. Tools interact with MATLAB, Simulink, or the file system.
+5.  **Observation**: The result (or error) from the tool is recorded.
+6.  **Iteration**: If the task isn't complete, the process repeats from step 1 with the new observation added to the history.
+7.  **Response**: Once the task is complete, a final summary is sent to the UI.
 
 ## Recent Improvements
 
-- **Enhanced UI Design**: The interface has been completely redesigned for better usability and visual appeal
-- **Improved Error Handling**: Errors are now captured with context and provided to the LLM for more intelligent recovery
-- **Better Tool Organization**: Tools are now properly categorized into general, MATLAB, and Simulink domains
-- **Performance Optimizations**: Reduced latency in tool execution and LLM communication
-- **Visual Feedback**: Added visual indicators for long-running operations and tool execution status
+- **Enhanced UI Design**: The interface has been redesigned for better usability with the conversion from MATLAB App Designer (.mlapp) to standard MATLAB (.m) files, improving compatibility across different MATLAB versions.
+- **Improved Error Handling**: Errors are now captured with context and provided to the LLM for more intelligent recovery, implemented through error redaction in Agent.m and ToolBox.m.
+- **Better Tool Organization**: Tools are now properly categorized into general, MATLAB, and Simulink domains as seen in the +tools directory structure.
+- **Multi-Provider LLM Support**: The system supports both OpenAI and Gemini API providers through the environment variable configuration.
+- **ReAct Loop Implementation**: A robust implementation of the Reasoning-Acting-Observing loop enables iterative task completion.
+- **Special Commands**: Support for special commands like @agent Continue has been implemented to enhance the user experience.
+- **Workspace Folder Management**: Automatic creation and management of an orion_workspace folder for storing agent-generated files.
+- **Visual Feedback**: Added snapshot capability for Simulink models to provide visual feedback of model states.
 
 ## Extensibility
 
-- Add a new tool: drop a new .m file in the appropriate +tools/ subdirectory and add its handle in ToolBox.register()
-- Swap LLM: edit llm/callGPT.m (response must stay JSON-parseable)
-- Vision upgrade: Use createSnapshot to send PNG to vision-capable LLMs for spatial feedback
-- Custom UI themes: Modify appearance settings in AgentApp.mlapp
+-   **Add a New Tool**:
+    1.  Create your `.m` function in the appropriate `+tools/` sub-package (e.g., `+tools/+matlab/my_new_tool.m`).
+    2.  Register it in `+agent/ToolBox.m` by adding its function handle and a description to the `registerCoreTools` method (or a new registration method if appropriate).
+-   **Swap LLM**: Modify `+llm/callGPT.m`. The function must continue to parse requests and return JSON-parseable responses as expected by the `Agent.m`.
+-   **Vision Upgrade**: For vision-capable LLMs, tools like `+tools/+simulink/auto_layout.m` (or a new tool) can use `createSnapshot` (if it exists, or implement screen capture) to send PNGs of models/plots for spatial feedback or analysis.
+-   **CI Regression**: Integrate `tests/` into a CI/CD pipeline (e.g., GitHub Actions with MathWorks-hosted runners).
 
 ## Safety Guidelines
 
-- All tool calls are wrapped in try/catch with enhanced error redaction
-- Model size limits can be enforced to prevent resource issues
-- Simulink.BlockDiagram.validate ensures model integrity before simulation
-- Never hardcode API keys or sensitive information in source code
-- Recent security improvements help prevent accidental exposure of sensitive data
+-   **Error Handling**: All tool calls are wrapped in `try/catch`. Errors are processed by `utils/redactErrors.m` or `utils/safeRedactErrors.m` to strip sensitive information (like full file paths) before being shown to the LLM or user.
+-   **Model Size Limits**: Consider implementing checks within tools or the agent to warn or prevent operations on excessively large models to avoid performance issues (e.g., `if numel(find_system(mdl,'Type','block')) > 1000`).
+-   **Model Validation**: Use `Simulink.BlockDiagram.validate` after structural edits to ensure model integrity before simulation.
+-   **API Key Security**: Never hardcode API keys. Use environment variables.
+-   **File System Access**: Be mindful that tools can read/write files. The `orion_workspace/` is the designated area for agent-generated content.

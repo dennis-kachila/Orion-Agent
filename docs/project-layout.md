@@ -8,9 +8,10 @@ Orion-Agent/
 ├── +agent/                  % core decision loop
 │   ├── Agent.m              % ReAct controller; owns chat history
 │   ├── ToolBox.m            % registers callable tools
-│   └── utils/
-│       ├── redactErrors.m   % strips stack traces before LLM sees them
-│       └── safeRedactErrors.m  % enhanced error redaction
+│
+├── +llm/
+│   ├── callGPT.m            % webwrite → OpenAI, Gemini, or local Llama
+│   └── promptTemplates.m    % System & few-shot templates
 │
 ├── +tools/                  % thin wrappers around MATLAB/Simulink APIs
 │   ├── +general/
@@ -39,24 +40,35 @@ Orion-Agent/
 │       ├── set_block_params.m     % sets parameters on blocks
 │       └── simulate_model.m       % out = sim(mdl,'ReturnWorkspaceOutputs','on')
 │
-├── +llm/
-│   ├── callGPT.m            % webwrite → OpenAI or local Llama
-│   └── promptTemplates.m    % System & few-shot templates
-│
 ├── app/
-│   └── AgentAppChat.m          % Enhanced Chat interface for interacting with the agent
+│   ├── AgentApp.mlapp       % App Designer source for the agent UI
+│   ├── AgentAppChat.m       % Enhanced Chat interface for interacting with the agent
+│   ├── (image files like 2.png, broom.png etc.)
 │
-├── orion_workspace/
-│   └── debug_hello.m        % simple test file
+├── docs/                    % Detailed documentation
+│   ├── README.md
+│   ├── api-capabilities.md
+│   ├── architecture.md
+│   ├── build-plan.md
+│   ├── project-layout.md    % This file
+│   ├── SUMMARY.md
+│   ├── ui-implementation.md
+│   └── workflow.md
+│
+├── Layout/                  % UI screenshots
+│   ├── app_ui.png
+│   └── app.png
+│
+├── orion_workspace/         % Working directory for agent-generated files
 │
 ├── tests/
 │   └── t_basic.m            % ensures each tool works on clean MATLAB
 │
-├── setup_paths.m            % adds necessary directories to MATLAB path
+├── Instructions.md          % General instructions
 ├── launch_agent.m           % script to start the Orion Agent
-├── llm_settings.m           % configuration for LLM connection settings
-├── README.md                % project overview and documentation
-└── set_api_key.bat          % Windows batch file to set API key environment variable
+├── README.md                % Project overview and documentation (main)
+├── set_api_key.bat          % Windows batch file to set API key environment variable
+└── setup_paths.m            % adds necessary directories to MATLAB path
 ```
 
-This structure organizes code into MATLAB package folders (those with + prefix) with specialized domains.
+This structure organizes code into MATLAB package folders (those with `+` prefix) with specialized domains.

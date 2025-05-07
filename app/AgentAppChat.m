@@ -328,17 +328,42 @@ classdef AgentAppChat < matlab.apps.AppBase
                     if isfield(responseData, 'log') && ~isempty(responseData.log)
                         app.updateWorkflowLog('Tool execution log:');
                         
-                        for i = 1:numel(responseData.log)
-                            logItem = responseData.log{i};
+                        try
+                            logItems = responseData.log;
                             
-                            if isstruct(logItem) && isfield(logItem, 'tool') && isfield(logItem, 'args')
-                                % Format the log entry nicely
-                                toolName = logItem.tool;
-                                argsStr = jsonencode(logItem.args);
-                                app.updateWorkflowLog(sprintf('→ %s: %s', toolName, argsStr));
-                            elseif ischar(logItem)
-                                app.updateWorkflowLog(sprintf('→ %s', logItem));
+                            % Check if log is a cell array
+                            if iscell(logItems)
+                                for i = 1:numel(logItems)
+                                    logItem = logItems{i};
+                                    
+                                    if isstruct(logItem) && isfield(logItem, 'tool')
+                                        % Format the log entry nicely
+                                        toolName = logItem.tool;
+                                        
+                                        if isfield(logItem, 'args')
+                                            if isstruct(logItem.args)
+                                                argsStr = jsonencode(logItem.args);
+                                            else
+                                                argsStr = '(arguments not available)';
+                                            end
+                                        else
+                                            argsStr = '(no arguments)';
+                                        end
+                                        
+                                        app.updateWorkflowLog(sprintf('→ %s: %s', toolName, argsStr));
+                                    elseif ischar(logItem) || isstring(logItem)
+                                        app.updateWorkflowLog(sprintf('→ %s', logItem));
+                                    else
+                                        app.updateWorkflowLog(sprintf('→ Unknown log item type: %s', class(logItem)));
+                                    end
+                                end
+                            else
+                                % Handle non-cell array log (could be a struct or something else)
+                                app.updateWorkflowLog('Log is not in expected cell array format');
+                                app.updateWorkflowLog(['Log type: ' class(logItems)]);
                             end
+                        catch logErr
+                            app.updateWorkflowLog(['Error processing log: ' logErr.message]);
                         end
                     end
                     

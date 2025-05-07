@@ -26,15 +26,70 @@ function response = callGPT(prompt)
     
     % API call counter for rate limiting
     persistent apiCallCount;
+    persistent apiCallHistory;
+    persistent sessionStartTime;
+    persistent rateLimit429Count;
+    
+    % Initialize persistent variables if empty
     if isempty(apiCallCount)
         apiCallCount = 0;
+        apiCallHistory = [];
+        sessionStartTime = datetime('now');
+        rateLimit429Count = 0;
     end
     
     % Max API calls allowed per session (strict limit)
-    MAX_API_CALLS = 3;
+    MAX_API_CALLS = 30;  % Increased from 3
+    
+    % Max API calls per minute (Gemini usually allows 60 QPM for paid tier, but we're conservative)
+    MAX_QPM = 3;  % Reduced from 5
+    
+    % Calculate recent call frequency
+    currentTime = datetime('now');
+    recentCalls = 0;
+    
+    if ~isempty(apiCallHistory)
+        % Count calls in the last 60 seconds
+        recentCalls = sum(seconds(currentTime - apiCallHistory) <= 60);
+        fprintf('API call stats: %d total calls this session, %d calls in last 60 seconds\n', ...
+                apiCallCount, recentCalls);
+        
+        % Display timestamp of each recent call
+        fprintf('Recent API call times:\n');
+        for i = max(1, length(apiCallHistory)-5):length(apiCallHistory)
+            fprintf('  %s (%.1f seconds ago)\n', ...
+                    string(apiCallHistory(i)), seconds(currentTime - apiCallHistory(i)));
+        end
+        
+        % Show rate limit error count if any
+        if rateLimit429Count > 0
+            fprintf('Rate limit errors encountered: %d\n', rateLimit429Count);
+        end
+    else
+        fprintf('API call stats: No previous calls in this session\n');
+    end
     
     % Debug mode - set to false to make actual API calls
+    % Force debug mode in these cases:
+    % 1. API key is empty
+    % 2. We've already hit rate limits multiple times (3+)
+    % 3. We've exceeded total session limit
+    % 4. We've exceeded rate limit
     debugMode = false;
+    
+    if isempty(apiConfig.apiKey)
+        debugMode = true;
+        fprintf('No API key available: Switching to debug mode\n');
+    elseif rateLimit429Count >= 3
+        debugMode = true;
+        fprintf('Multiple rate limits hit (%d times): Switching to debug mode\n', rateLimit429Count);
+    elseif apiCallCount >= MAX_API_CALLS
+        debugMode = true;
+        fprintf('API CALL SESSION LIMIT REACHED (%d/%d): Switching to debug mode\n', apiCallCount, MAX_API_CALLS);
+    elseif recentCalls >= MAX_QPM
+        debugMode = true;
+        fprintf('API RATE LIMIT REACHED (%d calls in last minute): Switching to debug mode\n', recentCalls);
+    end
     
     % Keep track of API call times for rate limiting
     persistent lastCallTime;
@@ -43,34 +98,29 @@ function response = callGPT(prompt)
     end
     
     % Rate limiting constants - ensure at least this many seconds between calls
-    MIN_DELAY_SECONDS = 30; % Minimum delay between API calls to avoid rate limits
-    
-    % Check if we've exceeded our API call limit
-    if apiCallCount >= MAX_API_CALLS && ~debugMode
-        fprintf('API CALL LIMIT REACHED (%d/%d): Switching to debug mode to avoid excess charges\n', apiCallCount, MAX_API_CALLS);
-        debugMode = true;
+    persistent MIN_DELAY_SECONDS;
+    if isempty(MIN_DELAY_SECONDS)
+        MIN_DELAY_SECONDS = 120; % Default to 2 minutes between calls for Gemini
+        
+        % Use a shorter delay for OpenAI
+        if strcmpi(apiConfig.provider, 'openai')
+            MIN_DELAY_SECONDS = 30;
+        end
     end
     
     if debugMode
-        fprintf('DEBUG MODE: Returning predefined response for development\n');
+        % Generate a properly formatted JSON response that the agent can use
+        fprintf('DEBUG MODE: Generating a structured response for the agent to use\n');
         
-        % Get the user's request from the prompt to customize the response
+        % Extract user query for context
         userQuery = extractUserQuery(prompt);
+        fprintf('User query: %s\n', userQuery);
         
-        % Provide appropriate debug responses based on the request
-        if contains(userQuery, 'hello world') || contains(userQuery, 'print hello')
-            % For hello world requests, use run_code_or_file for immediate output
-            response = '{"tool": "run_code_or_file", "args": {"codeStr": "disp(''Hello World!''); disp(''Counting from 1 to 10:''); for i = 1:10, disp(i); end"}}';
-        elseif contains(userQuery, 'script') || contains(userQuery, 'create') || contains(userQuery, 'write')
-            % For script creation, use open_or_create_file with file content
-            scriptContent = sprintf('%%HELLO_WORLD - A simple script that prints hello world and counts\n\ndisp(''Hello World!'');\ndisp(''Counting from 1 to 10:'');\n\n%% Count from 1 to 10\nfor i = 1:10\n    disp(i);\nend');
-            response = sprintf('{"tool": "open_or_create_file", "args": {"fileName": "hello_world.m", "content": "%s"}}', regexprep(scriptContent, '(["\\])', '\\$1'));
-        elseif contains(userQuery, 'simulink') || contains(userQuery, 'model')
-            response = '{"tool": "create_new_model", "args": {"modelName": "example_model"}}';
-        else
-            % Default fallback response
-            response = '{"tool": "respond", "args": {"message": "I understand your request. How can I assist you with MATLAB or Simulink today?"}}';
-        end
+        % Create a completely generic debug response that doesn't answer the query
+        % This creates a template file that informs the user about rate limits
+        % without attempting to provide any query-specific response
+        response = sprintf('{"tool": "open_file", "args": {"filePath": "api_rate_limit_notice.m", "content": "%% API_RATE_LIMIT_NOTICE.m\\n%% Created in debug mode due to API rate limiting\\n\\ndisp(''API rate limit reached - running in debug mode'');\\ndisp(''Your query was: %s'');\\ndisp(''Please wait at least %d seconds before trying again'');\\ndisp(''Consider using OpenAI API instead if you have that key available'');\\n"}}', strrep(userQuery, '"', '\\\"'), round(MIN_DELAY_SECONDS));
+        
         return;
     end
     
@@ -78,7 +128,7 @@ function response = callGPT(prompt)
     fprintf('Making actual API call to LLM service...\n');
     
     % Check time since last API call for rate limiting
-    timeSinceLastCall = seconds(datetime('now') - lastCallTime);
+    timeSinceLastCall = seconds(currentTime - lastCallTime);
     
     if timeSinceLastCall < MIN_DELAY_SECONDS
         % Wait to avoid hitting rate limits
@@ -89,21 +139,51 @@ function response = callGPT(prompt)
     
     % Update call counter and time
     apiCallCount = apiCallCount + 1;
-    lastCallTime = datetime('now');
+    apiCallHistory = [apiCallHistory; currentTime];
+    lastCallTime = currentTime;
     
     % Handle different API providers
-    switch lower(apiConfig.provider)
-        case 'openai'
-            response = callOpenAI(prompt, apiConfig);
-        case 'gemini'
-            response = callGemini(prompt, apiConfig);
-        case 'local'
-            response = callLocalLLM(prompt, apiConfig);
-        otherwise
-            error('Unknown API provider: %s', apiConfig.provider);
+    try
+        switch lower(apiConfig.provider)
+            case 'openai'
+                response = callOpenAI(prompt, apiConfig);
+            case 'gemini'
+                response = callGemini(prompt, apiConfig);
+            case 'local'
+                response = callLocalLLM(prompt, apiConfig);
+            otherwise
+                error('Unknown API provider: %s', apiConfig.provider);
+        end
+        
+        fprintf('API call completed successfully\n');
+    catch ME
+        % If we hit a rate limit error, remember this for future calls
+        if contains(ME.message, 'Too Many Requests') || contains(ME.message, '429')
+            fprintf('RATE LIMIT ERROR DETECTED: Forcing longer delay for future calls\n');
+            
+            % Update rate limit counter
+            rateLimit429Count = rateLimit429Count + 1;
+            
+            % Double the minimum delay for future calls
+            MIN_DELAY_SECONDS = MIN_DELAY_SECONDS * 1.5;
+            
+            % If using Gemini, create a properly formatted tool response instead of an error
+            % This allows the agent to continue functioning instead of breaking
+            if strcmpi(apiConfig.provider, 'gemini')
+                fprintf('Creating fallback tool response for Gemini rate limit\n');
+                response = sprintf('{"tool": "run_code", "args": {"codeStr": "disp(''API rate limit reached (HTTP 429)'');\\ndisp(''Please wait at least %d seconds before trying again'');"}}', round(MIN_DELAY_SECONDS));
+                return;
+            else
+                % For other providers, return an error in standard format
+                errorMsg = sprintf('API rate limit reached (HTTP 429). Please wait at least %d seconds before trying again.', round(MIN_DELAY_SECONDS));
+                response = sprintf('{"error": "%s"}', errorMsg);
+                return;
+            end
+        end
+        
+        % Re-throw the error
+        rethrow(ME);
     end
-    
-    fprintf('API call completed successfully\n');
 end
 
 function apiConfig = getAPIConfig()
@@ -231,32 +311,86 @@ function response = callGemini(prompt, config)
     % CALLGEMINI Call Google Gemini API
     try
         % Prepare API request
-        options = weboptions('HeaderFields', {'Content-Type', 'application/json', ...
+        options = weboptions('HeaderFields', {'Content-Type', 'application/json'; ...
                                              'x-goog-api-key', config.apiKey}, ...
                             'Timeout', 60);
         
-        % Build request body for Gemini
-        if ischar(prompt) || isstring(prompt)
-            % Format for Gemini text-only prompt
-            requestBody = struct('contents', struct('parts', struct('text', char(prompt))));
-        elseif isstruct(prompt) && isfield(prompt, 'messages')
-            % Convert message array format to Gemini format
-            geminiContents = [];
-            for i = 1:length(prompt.messages)
-                msg = prompt.messages{i};
-                if isfield(msg, 'role') && isfield(msg, 'content')
-                    % Add formatted message
-                    geminiContents(end+1) = struct('role', translateRole(msg.role), ...
-                                                 'parts', struct('text', msg.content));
+        requestBody = struct(); % Initialize requestBody
+        system_prompt_text = '';
+
+        if isstruct(prompt) && isfield(prompt, 'messages')
+            % Extract system prompt first, if any
+            tempMessages = prompt.messages;
+            isSystemMsg = cellfun(@(m) isfield(m, 'role') && strcmpi(m.role, 'system'), tempMessages);
+            systemMsgIndices = find(isSystemMsg);
+            
+            if ~isempty(systemMsgIndices)
+                % Use the content of the first system message found
+                system_prompt_text = tempMessages{systemMsgIndices(1)}.content;
+                % Remove system messages from tempMessages so they aren't added to 'contents'
+                tempMessages(systemMsgIndices) = []; 
+            end
+            
+            % Convert remaining message array format to Gemini format for 'contents'
+            num_messages = length(tempMessages);
+            if num_messages == 0 && isempty(system_prompt_text) && ~(ischar(prompt) || isstring(prompt))
+                 error('OrionAgent:callGemini:NoMessagesAfterSystemFilter', 'No user/assistant messages left after filtering system prompt and prompt is not a simple string.');
+            end
+
+            geminiContents = cell(1, num_messages); 
+            valid_msg_idx = 0; 
+
+            for i = 1:num_messages
+                msg = tempMessages{i};
+                if isfield(msg, 'role') && isfield(msg, 'content') && ~isempty(strtrim(char(msg.content)))
+                    translated_role_val = translateRole(msg.role, 'Gemini');
+                    
+                    if isempty(translated_role_val) % This handles skipping roles not meant for 'contents'
+                        % This case should ideally not be hit if system roles are pre-filtered
+                        warning('OrionAgent:callGemini:SkippingMessageInContents', 'Skipping message with role ''%s'' from ''contents'' array as it is not translatable to a Gemini content role (e.g. system role handled separately).', msg.role);
+                        continue; 
+                    end
+                    
+                    valid_msg_idx = valid_msg_idx + 1;
+                    current_part = struct('text', char(msg.content));
+                    geminiContents{valid_msg_idx} = struct('role', translated_role_val, ...
+                                                           'parts', {{current_part}}); 
+                else
+                    warning('OrionAgent:callGemini:SkippingMalformedMessage', 'Skipping malformed or empty message at index %d.', i);
                 end
             end
-            requestBody = struct('contents', {geminiContents});
+            
+            if valid_msg_idx > 0
+                geminiContents = geminiContents(1:valid_msg_idx); 
+                requestBody.contents = geminiContents; 
+            elseif isempty(system_prompt_text) && ~(ischar(prompt) || isstring(prompt))
+                 % Only error if there are no contents AND no system prompt AND not a simple string prompt
+                 error('OrionAgent:callGemini:NoValidContents', 'No valid messages to form ''contents'' and no system prompt or simple string prompt provided.');
+            end
+
+        elseif ischar(prompt) || isstring(prompt)
+            % Single user message (no explicit system prompt from this input type alone)
+            part = struct('text', char(prompt));
+            content_item = struct('role', 'user', 'parts', {{part}}); 
+            requestBody.contents = {{content_item}};
         else
-            error('Unsupported prompt format');
+            error('OrionAgent:callGemini:UnsupportedPrompt', 'Unsupported prompt format for Gemini');
+        end
+
+        % Add systemInstruction if a system prompt was found and extracted
+        if ~isempty(system_prompt_text)
+            system_part = struct('text', char(system_prompt_text));
+            requestBody.systemInstruction = struct('parts', {{system_part}}); % Changed to systemInstruction (camelCase)
         end
         
+        % Ensure there's something to send
+        if ~isfield(requestBody, 'contents') && ~isfield(requestBody, 'systemInstruction') % Changed to systemInstruction
+            error('OrionAgent:callGemini:EmptyRequestBody', 'Cannot send an empty request to Gemini. No contents or system instruction generated.');
+        end
+
         % Convert request to JSON
         requestJSON = jsonencode(requestBody);
+        fprintf('Gemini Request JSON: %s\n', requestJSON); % DEBUG LINE
         
         % Make API call
         fprintf('Calling Gemini API endpoint: %s\n', config.endpoint);
@@ -280,17 +414,33 @@ function response = callGemini(prompt, config)
         error('Gemini API error: %s', ME.message);
     end
     
-    function translatedRole = translateRole(role)
-        % Translate roles from OpenAI format to Gemini format
-        switch lower(role)
-            case 'user'
-                translatedRole = 'user';
-            case 'assistant'
-                translatedRole = 'model';
-            case 'system'
-                translatedRole = 'system';
-            otherwise
-                translatedRole = 'user';
+    function translatedRole = translateRole(role, targetApi)
+        % TRANSLATEROLE Translates roles between OpenAI and other API formats (e.g., Gemini)
+        % targetApi can be 'Gemini' or other identifiers if more are added.
+        
+        translatedRole = ''; % Default to empty, indicating not translatable if not explicitly set
+        
+        if nargin < 2
+            targetApi = 'openai'; % Default to openai if not specified
+        end
+
+        switch lower(targetApi)
+            case 'gemini'
+                switch lower(role)
+                    case 'user'
+                        translatedRole = 'user';
+                    case 'assistant'
+                        translatedRole = 'model';
+                    case 'system'
+                        % This role is handled by extracting to system_instruction
+                        % Return empty so it's not added to 'contents' by the caller
+                        translatedRole = ''; 
+                    otherwise
+                        warning('OrionAgent:translateRole:UnknownRoleForGemini', 'Gemini: Unknown role ''%s'' encountered. Treating as ''user''.', role);
+                        translatedRole = 'user'; % Fallback for unknown roles
+                end
+            otherwise % Includes 'openai' or any other unspecified target
+                translatedRole = lower(role); % No translation needed or simple lowercase
         end
     end
 end

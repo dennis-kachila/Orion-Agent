@@ -181,11 +181,28 @@ classdef Agent < handle
                     fprintf('Calling LLM to determine next action...\n');
                     llmResponse = obj.llmInterface(fullPrompt);
                     
-                    % Parse JSON response to get tool and args
-                    toolCall = jsondecode(llmResponse);
+                    % DEBUG: Display LLM response in command window
+                    fprintf('==== LLM RESPONSE BEGIN ====\n');
+                    fprintf('%s\n', llmResponse);
+                    fprintf('==== LLM RESPONSE END ====\n');
                     
-                    if ~isfield(toolCall, 'tool') || ~isfield(toolCall, 'args')
-                        error('Invalid LLM response format. Expected fields "tool" and "args".');
+                    % Parse JSON response to get tool and args
+                    try
+                        toolCall = jsondecode(llmResponse);
+                        
+                        if ~isfield(toolCall, 'tool') || ~isfield(toolCall, 'args')
+                            error('Invalid LLM response format. Expected fields "tool" and "args".');
+                        end
+                    catch jsonError
+                        % If JSON parsing fails, create a generic error response
+                        fprintf('ERROR: Failed to parse JSON response: %s\n', jsonError.message);
+                        fprintf('Creating generic error response instead of a hardcoded solution\n');
+                        
+                        % Generic error reporting tool - doesn't try to answer the query
+                        toolCall = struct(...
+                            'tool', 'run_code_or_file', ...
+                            'args', struct(...
+                                'codeStr', sprintf('disp(''Error processing the LLM response:'');\ndisp(''%s'');\ndisp(''Please try again in a moment.'');', strrep(jsonError.message, '''', ''''''))));
                     end
                     
                     % Special handling for complex response formats
