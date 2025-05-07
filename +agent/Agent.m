@@ -217,56 +217,49 @@ classdef Agent < handle
                     if isfield(toolCall, 'log') && ~isempty(toolCall.log)
                         fprintf('Found additional tool calls in log field\n');
                         
-                        % Extract code content from nested run_code if needed
-                        if strcmp(toolCall.tool, 'open_editor') && ...
-                           ~isfield(toolCall.args, 'content')
-                           
-                            fprintf('open_editor missing content field, looking in log\n');
-                            
-                            % Determine if log is a cell array or struct array
-                            if iscell(toolCall.log)
-                                logArray = toolCall.log;
-                                fprintf('Log is a cell array with %d items\n', length(logArray));
-                            else
-                                % Convert struct array to cell array if needed
-                                logArray = num2cell(toolCall.log);
-                                fprintf('Log is a struct array with %d items\n', length(logArray));
-                            end
-                            
-                            % Look for run_code in log that might have the content
-                            for i = 1:length(logArray)
-                                try
-                                    logItem = logArray{i};
-                                    
-                                    % Debug the log item structure
-                                    fprintf('Examining log item %d: %s\n', i, jsonencode(logItem));
-                                    
-                                    if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
-                                       isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
-                                        
-                                        % Add the code content to the open_editor args
-                                        fprintf('Found code content in log run_code item: %s\n', logItem.args.codeStr);
-                                        toolCall.args.content = logItem.args.codeStr;
-                                        break;
-                                    end
-                                catch logErr
-                                    fprintf('Error processing log item %d: %s\n', i, logErr.message);
-                                end
-                            end
-                            
-                            % If still missing content, check if fileName has file extension
-                            if ~isfield(toolCall.args, 'content') && isfield(toolCall.args, 'fileName')
-                                fprintf('Still missing content, generating default template based on file type\n');
-                                [~, ~, fileExt] = fileparts(toolCall.args.fileName);
+                        % Determine if log is a cell array or struct array
+                        if iscell(toolCall.log)
+                            logArray = toolCall.log;
+                            fprintf('Log is a cell array with %d items\n', length(logArray));
+                        else
+                            % Convert struct array to cell array if needed
+                            logArray = num2cell(toolCall.log);
+                            fprintf('Log is a struct array with %d items\n', length(logArray));
+                        end
+                        
+                        % Look for run_code in log that might have the content
+                        for i = 1:length(logArray)
+                            try
+                                logItem = logArray{i};
                                 
-                                % Create default content based on file extension
-                                if strcmpi(fileExt, '.m')
-                                    toolCall.args.content = sprintf('%% %s\n%% Auto-generated default file\n\ndisp(''Hello, this is a default MATLAB script'');\n', toolCall.args.fileName);
-                                    fprintf('Generated default MATLAB script content\n');
-                                else
-                                    toolCall.args.content = sprintf('% Default content for %s\n', toolCall.args.fileName);
-                                    fprintf('Generated generic default content\n');
+                                % Debug the log item structure
+                                fprintf('Examining log item %d: %s\n', i, jsonencode(logItem));
+                                
+                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
+                                   isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
+                                    
+                                    % Add the code content to the open_editor args
+                                    fprintf('Found code content in log run_code item: %s\n', logItem.args.codeStr);
+                                    toolCall.args.content = logItem.args.codeStr;
+                                    break;
                                 end
+                            catch logErr
+                                fprintf('Error processing log item %d: %s\n', i, logErr.message);
+                            end
+                        end
+                        
+                        % If still missing content, check if fileName has file extension
+                        if ~isfield(toolCall.args, 'content') && isfield(toolCall.args, 'fileName')
+                            fprintf('Still missing content, generating default template based on file type\n');
+                            [~, ~, fileExt] = fileparts(toolCall.args.fileName);
+                            
+                            % Create default content based on file extension
+                            if strcmpi(fileExt, '.m')
+                                toolCall.args.content = sprintf('%% %s\n%% Auto-generated default file\n\ndisp(''Hello, this is a default MATLAB script'');\n', toolCall.args.fileName);
+                                fprintf('Generated default MATLAB script content\n');
+                            else
+                                toolCall.args.content = sprintf('% Default content for %s\n', toolCall.args.fileName);
+                                fprintf('Generated generic default content\n');
                             end
                         end
                     end
@@ -283,36 +276,127 @@ classdef Agent < handle
                     if isfield(toolCall, 'log') && ~isempty(toolCall.log)
                         fprintf('Processing additional tool calls in log array...\n');
                         
-                        % Determine if log is a cell array or struct array
+                        % Determine if log is a cell array or string array
                         if iscell(toolCall.log)
                             logArray = toolCall.log;
+                        elseif isstring(toolCall.log) || ischar(toolCall.log)
+                            % Convert string array to cell array
+                            if ischar(toolCall.log)
+                                logArray = {toolCall.log};
+                            else
+                                logArray = cellstr(toolCall.log);
+                            end
                         else
                             % Convert struct array to cell array if needed
                             logArray = num2cell(toolCall.log);
                         end
                         
-                        % Flag to track if we need to execute any nested tools
-                        hasRunCodeTool = false;
-                        runCodeItem = struct();
+                        % Track tools to execute in order
+                        toolsToExecute = {};
                         
-                        % First identify if there are any run_code items
+                        % First parse all log entries to identify tools
                         for i = 1:length(logArray)
                             try
                                 logItem = logArray{i};
-                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
-                                   isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
-                                    hasRunCodeTool = true;
-                                    runCodeItem = logItem;
-                                    fprintf('Found run_code tool to execute after primary tool\n');
-                                    break;
+                                
+                                % Debug info about what we're processing
+                                if isstruct(logItem)
+                                    fprintf('Log item %d is a struct with fields: %s\n', i, strjoin(fieldnames(logItem), ', '));
+                                    if isfield(logItem, 'tool')
+                                        fprintf('Found tool call in log: %s\n', logItem.tool);
+                                        toolsToExecute{end+1} = logItem;
+                                    end
+                                elseif ischar(logItem) || isstring(logItem)
+                                    % Parse log string entries like: "run_code_or_file(filename.m)"
+                                    logItemStr = char(logItem);
+                                    fprintf('Parsing log string item: %s\n', logItemStr);
+                                    
+                                    % Extract tool name and arguments
+                                    [toolName, argsStr] = obj.parseLogString(logItemStr);
+                                    
+                                    if ~isempty(toolName)
+                                        fprintf('Extracted tool: %s with args: %s\n', toolName, argsStr);
+                                        
+                                        % If the tool is run_code_or_file and it's a file
+                                        if strcmp(toolName, 'run_code_or_file') || strcmp(toolName, 'run_code')
+                                            % Prepare a tool call struct for this log entry
+                                            fileToRun = strtrim(argsStr);
+                                            if endsWith(fileToRun, '.m')
+                                                % It's a file to run
+                                                toolsToExecute{end+1} = struct('tool', 'run_code_or_file', ...
+                                                    'args', struct('fileName', fileToRun, 'isFile', 'true'));
+                                            else
+                                                % It's code to run
+                                                toolsToExecute{end+1} = struct('tool', 'run_code_or_file', ...
+                                                    'args', struct('codeStr', fileToRun, 'isFile', 'false'));
+                                            end
+                                        else
+                                            % Add other tool types as needed
+                                            fprintf('Skipping log tool %s (not implemented for direct execution)\n', toolName);
+                                        end
+                                    end
+                                else
+                                    fprintf('Log item %d is of type %s (not handled)\n', i, class(logItem));
                                 end
                             catch logErr
                                 fprintf('Error processing log item %d: %s\n', i, logErr.message);
                             end
                         end
                         
-                        % Save the run_code tool for execution after the primary tool
-                        obj.pendingRunCodeTool = runCodeItem;
+                        % Now execute the tools if we're in debug mode
+                        fprintf('Found %d additional tools to execute\n', length(toolsToExecute));
+                        
+                        % In debug mode, execute without user confirmation
+                        debugMode = true;
+                        
+                        if debugMode && ~isempty(toolsToExecute)
+                            % Wait a moment for any open_file operations to complete
+                            pause(0.5);
+                            
+                            % Execute all tool calls in order
+                            for i = 1:length(toolsToExecute)
+                                try
+                                    % Get the tool to execute
+                                    execTool = toolsToExecute{i};
+                                    
+                                    if isstruct(execTool) && isfield(execTool, 'tool') && isfield(execTool, 'args')
+                                        fprintf('Executing log tool %d: %s\n', i, execTool.tool);
+                                        
+                                        % Check if the file exists for run_code_or_file
+                                        if strcmp(execTool.tool, 'run_code_or_file') && ...
+                                           isfield(execTool.args, 'fileName') && ...
+                                           ~isempty(execTool.args.fileName)
+                                           
+                                            % Ensure file path is set correctly with workspace folder
+                                            fileName = execTool.args.fileName;
+                                            workspaceFolder = fullfile(pwd, 'orion_workspace');
+                                            fullPath = fullfile(workspaceFolder, fileName);
+                                            
+                                            % Check if the file exists
+                                            if exist(fullPath, 'file')
+                                                fprintf('File %s exists, will run it\n', fullPath);
+                                                execTool.args.fileName = fullPath;
+                                            else
+                                                fprintf('Warning: File %s does not exist, cannot run it\n', fullPath);
+                                                continue;  % Skip to next tool
+                                            end
+                                        end
+                                        
+                                        % Execute the tool
+                                        [toolResult, ~] = obj.ToolBox.dispatchTool(execTool.tool, execTool.args);
+                                        
+                                        % Add to tool log
+                                        obj.toolLog{end+1} = struct('tool', execTool.tool, ...
+                                                                 'args', execTool.args, ...
+                                                                 'result', toolResult);
+                                        
+                                        fprintf('Log tool execution completed\n');
+                                    end
+                                catch execErr
+                                    fprintf('Error executing log tool %d: %s\n', i, execErr.message);
+                                end
+                            end
+                        end
                     end
                     
                     % Dispatch to appropriate tool
@@ -671,6 +755,46 @@ classdef Agent < handle
             catch
                 % If any error in parsing, return original to be safe
                 cleanedText = text;
+            end
+        end
+        
+        function [toolName, args] = parseLogString(logString)
+            % PARSELOGSTRING Parse a log string to extract tool name and arguments
+            % Example input: "run_code_or_file(filename.m)" or "open_file(plot_sine.m, ...)"
+            
+            toolName = '';
+            args = '';
+            
+            try
+                % Use regex to extract tool name and args
+                pattern = '(\w+)\((.*?)\)';
+                matches = regexp(logString, pattern, 'tokens', 'once');
+                
+                if ~isempty(matches)
+                    toolName = matches{1};
+                    
+                    % Handle args with special case for ellipsis
+                    rawArgs = matches{2};
+                    
+                    % If args ends with "...", it's a placeholder - handle the common case
+                    if contains(rawArgs, '...')
+                        % Check for specific patterns like "filename.m, ..."
+                        if contains(rawArgs, ',')
+                            % Extract the part before the comma
+                            parts = strsplit(rawArgs, ',');
+                            args = strtrim(parts{1});
+                            fprintf('Extracted arg from ellipsis format: %s\n', args);
+                        else
+                            % Just use what's available
+                            args = strtrim(strrep(rawArgs, '...', ''));
+                        end
+                    else
+                        args = strtrim(rawArgs);
+                    end
+                end
+            catch
+                toolName = '';
+                args = '';
             end
         end
     end
