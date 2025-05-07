@@ -124,8 +124,21 @@ classdef Agent < handle
                 end
             end
             
+            % Create a workspace folder for files if it doesn't exist
+            workspaceFolder = fullfile(pwd, 'orion_workspace');
+            if ~exist(workspaceFolder, 'dir')
+                fprintf('Creating workspace folder: %s\n', workspaceFolder);
+                mkdir(workspaceFolder);
+            end
+            
+            % Get workspace context to inform LLM
+            workspaceContext = obj.getWorkspaceContext(workspaceFolder);
+            
             % Add user message to history
             obj.chatHistory(end+1) = struct('role', 'user', 'content', userText);
+            
+            % Add workspace context as a system message
+            obj.chatHistory(end+1) = struct('role', 'system', 'content', workspaceContext);
             
             % Generate prompt with history and tool descriptions
             fullPrompt = llm.promptTemplates.buildPrompt(obj.chatHistory, obj.ToolBox.getToolDescriptions());
@@ -142,13 +155,6 @@ classdef Agent < handle
             
             % Flag to track if we've already generated a successful response
             successfulResponse = false;
-            
-            % Create a workspace folder for files if it doesn't exist
-            workspaceFolder = fullfile(pwd, 'orion_workspace');
-            if ~exist(workspaceFolder, 'dir')
-                fprintf('Creating workspace folder: %s\n', workspaceFolder);
-                mkdir(workspaceFolder);
-            end
             
             % Display status to command window
             fprintf('Processing request: "%s"\n', userText);
@@ -189,7 +195,7 @@ classdef Agent < handle
                     % Parse JSON response to get tool and args
                     try
                         % Improve JSON parsing by first checking for and removing markdown code blocks
-                        cleanedResponse = cleanMarkdownFormatting(llmResponse);
+                        cleanedResponse = agent.Agent.cleanMarkdownFormatting(llmResponse);
                         toolCall = jsondecode(cleanedResponse);
                         
                         if ~isfield(toolCall, 'tool') || ~isfield(toolCall, 'args')
@@ -666,6 +672,116 @@ classdef Agent < handle
                 % If any error in parsing, return original to be safe
                 cleanedText = text;
             end
+        end
+    end
+    
+    methods
+        function contextMessage = getWorkspaceContext(~, workspaceFolder)
+            % GETWORKSPACECONTEXT Scans the workspace folder and creates a context message
+            % with information about available files and their content
+            
+            % Start with basic context information
+            contextMsg = sprintf('WORKSPACE CONTEXT (Current Date: %s)\n\n', datetime('now', 'Format', 'yyyy-MM-dd'));
+            
+            % Check if the workspace folder exists
+            if ~exist(workspaceFolder, 'dir')
+                contextMsg = [contextMsg, sprintf('The workspace folder %s does not exist yet. I will create it when needed.\n', workspaceFolder)];
+                contextMessage = contextMsg;
+                return;
+            end
+            
+            % Get list of files in the workspace
+            files = dir(fullfile(workspaceFolder, '*.*'));
+            
+            % Filter out '.' and '..' entries
+            files = files(~ismember({files.name}, {'.', '..'}));
+            
+            % Add information about workspace files
+            if isempty(files)
+                contextMsg = [contextMsg, sprintf('The workspace folder %s exists but contains no files yet.\n', workspaceFolder)];
+            else
+                contextMsg = [contextMsg, sprintf('The workspace folder %s contains the following %d files:\n\n', ...
+                    workspaceFolder, length(files))];
+                
+                % List all files with sizes and dates
+                contextMsg = [contextMsg, sprintf('%-30s %-10s %-19s\n', 'Filename', 'Size (B)', 'Last Modified')];
+                contextMsg = [contextMsg, sprintf('%-30s %-10s %-19s\n', repmat('-',1,30), repmat('-',1,10), repmat('-',1,19))];
+                
+                for i = 1:length(files)
+                    f = files(i);
+                    contextMsg = [contextMsg, sprintf('%-30s %-10d %-19s\n', ...
+                        f.name, f.bytes, datestr(f.datenum, 'yyyy-mm-dd HH:MM:SS'))];
+                end
+                
+                contextMsg = [contextMsg, newline];
+                
+                % For MATLAB files, include a brief overview of their content
+                mFiles = files(endsWith({files.name}, '.m'));
+                
+                if ~isempty(mFiles)
+                    contextMsg = [contextMsg, sprintf('\nContent overview of MATLAB (.m) files:\n\n')];
+                    
+                    for i = 1:min(5, length(mFiles))  % Limit to first 5 files to avoid very large contexts
+                        f = mFiles(i);
+                        fullPath = fullfile(workspaceFolder, f.name);
+                        
+                        try
+                            fileContent = '';
+                            fid = fopen(fullPath, 'r');
+                            if fid ~= -1
+                                % Read first 10 lines or 500 characters, whichever comes first
+                                lineCount = 0;
+                                contentPreview = '';
+                                
+                                while ~feof(fid) && lineCount < 10
+                                    line = fgets(fid);
+                                    if ischar(line)
+                                        contentPreview = [contentPreview, line];
+                                        lineCount = lineCount + 1;
+                                    else
+                                        break;
+                                    end
+                                end
+                                
+                                fclose(fid);
+                                
+                                % Trim to 500 characters if needed
+                                if length(contentPreview) > 500
+                                    contentPreview = [contentPreview(1:497), '...'];
+                                end
+                                
+                                % Add to context
+                                contextMsg = [contextMsg, sprintf('File: %s\nPreview:\n%s\n\n', f.name, contentPreview)];
+                            end
+                        catch ME
+                            % In case of error reading file, just note it
+                            contextMsg = [contextMsg, sprintf('File: %s (Error reading file: %s)\n\n', f.name, ME.message)];
+                        end
+                    end
+                    
+                    if length(mFiles) > 5
+                        contextMsg = [contextMsg, sprintf('(Additional %d MATLAB files not shown)\n', length(mFiles) - 5)];
+                    end
+                end
+            end
+            
+            % Add note about Simulink models if any
+            slxFiles = files(endsWith({files.name}, '.slx'));
+            if ~isempty(slxFiles)
+                contextMsg = [contextMsg, sprintf('\nThe workspace contains %d Simulink model files:\n', length(slxFiles))];
+                for i = 1:length(slxFiles)
+                    contextMsg = [contextMsg, sprintf('- %s\n', slxFiles(i).name)];
+                end
+            end
+            
+            % Final guidance
+            contextMsg = [contextMsg, sprintf('\nIMPORTANT: When using tools:\n')];
+            contextMsg = [contextMsg, sprintf('1. Check if files exist before trying to run them\n')];
+            contextMsg = [contextMsg, sprintf('2. Create files in the workspace folder before running them\n')];
+            contextMsg = [contextMsg, sprintf('3. Use "open_or_create_file" tool for new files or to modify existing ones\n')];
+            contextMsg = [contextMsg, sprintf('4. Only use "run_code_or_file" after verifying the file exists\n')];
+            
+            contextMessage = contextMsg;
         end
     end
 end

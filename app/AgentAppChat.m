@@ -310,8 +310,11 @@ classdef AgentAppChat < matlab.apps.AppBase
                     % New JSON format response
                     
                     % Display summary if present
-                    if isfield(responseData, 'summary')
+                    if isfield(responseData, 'summary') && ~isempty(responseData.summary)
                         app.updateChatHistory(responseData.summary, 'assistant');
+                    else
+                        % Fallback summary if none provided
+                        app.updateChatHistory('Task completed successfully', 'assistant');
                     end
                     
                     % Display files if present
