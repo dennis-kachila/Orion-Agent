@@ -22,7 +22,7 @@ Orion-Agent/
 │   │   ├── get_workspace_var.m   % retrieves value of workspace variable
 │   │   ├── open_or_create_file.m % creates or opens a file in editor
 │   │   ├── read_file_content.m   % reads contents of a file
-│   │   ├── run_code_or_file.m    % evalc wrapper for arbitrary MATLAB code or runs file
+│   │   ├── run_code_file.m       % evalc wrapper that runs a MATLAB .m file
 │   │   ├── run_unit_tests.m      % executes unit tests
 │   │   ├── set_workspace_var.m   % sets value of workspace variable
 │   │   └── write_file_contents.m % writes content to a file

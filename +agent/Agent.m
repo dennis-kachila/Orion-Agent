@@ -8,7 +8,7 @@ classdef Agent < handle
         llmInterface % Interface to the LLM
         toolLog % Maintains a log of all tool calls made
         modifiedFiles % Tracks files that have been created or modified
-        pendingRunCodeTool % Stores a run_code_or_file tool to execute after primary tool
+        pendingRunCodeTool % Stores a run_code_file tool to execute after primary tool
     end
     
     methods
@@ -32,7 +32,7 @@ classdef Agent < handle
                         'When you respond, use clear explanations and JSON format for tool calls.\n', ...
                         'Example:\n', ...
                         '{"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
-                        'If you need to run code, use the run_code_or_file tool.\n', ...
+                        'If you need to run code, use the run_code_file tool.\n', ...
                         'If you are unsure, ask the user for clarification.'];
                 end
                 obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
@@ -44,7 +44,7 @@ classdef Agent < handle
                     'Your job is to help users write, debug, and understand MATLAB code and Simulink models.\n', ...
                     'Always respond in JSON format for tool calls.\n', ...
                     'Example: {"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
-                    'If you need to run code, use the run_code_or_file tool.\n', ...
+                    'If you need to run code, use the run_code_file tool.\n', ...
                     'If you are unsure, ask the user for clarification.\n', ...
                     'Be concise and helpful.'
                 ]);
@@ -214,7 +214,7 @@ classdef Agent < handle
                         
                         % Generic error reporting tool - doesn't try to answer the query
                         toolCall = struct(...
-                            'tool', 'run_code_or_file', ...
+                            'tool', 'run_code_file', ...
                             'args', struct(...
                                 'codeStr', sprintf('disp(''Error processing the LLM response:'');\ndisp(''%s'');\ndisp(''Please try again in a moment.'');', strrep(jsonError.message, '''', ''''''))));
                     end
@@ -241,11 +241,11 @@ classdef Agent < handle
                                 % Debug the log item structure
                                 fprintf('Examining log item %d: %s\n', i, jsonencode(logItem));
                                 
-                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code') && ...
+                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code_file') && ...
                                    isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
                                     
                                     % Add the code content to the open_editor args
-                                    fprintf('Found code content in log run_code item: %s\n', logItem.args.codeStr);
+                                    fprintf('Found code content in log run_code_file item: %s\n', logItem.args.codeStr);
                                     toolCall.args.content = logItem.args.codeStr;
                                     break;
                                 end
@@ -313,7 +313,7 @@ classdef Agent < handle
                                         toolsToExecute{end+1} = logItem;
                                     end
                                 elseif ischar(logItem) || isstring(logItem)
-                                    % Parse log string entries like: "run_code_or_file(filename.m)"
+                                    % Parse log string entries like: "run_code_file(filename.m)"
                                     logItemStr = char(logItem);
                                     fprintf('Parsing log string item: %s\n', logItemStr);
                                     
@@ -323,18 +323,18 @@ classdef Agent < handle
                                     if ~isempty(toolName)
                                         fprintf('Extracted tool: %s with args: %s\n', toolName, argsStr);
                                         
-                                        % If the tool is run_code_or_file and it's a file
-                                        if strcmp(toolName, 'run_code_or_file') || strcmp(toolName, 'run_code')
+                                        % If the tool is run_code_file and it's a file
+                                        if strcmp(toolName, 'run_code_file')
                                             % Prepare a tool call struct for this log entry
                                             fileToRun = strtrim(argsStr);
                                             if endsWith(fileToRun, '.m')
                                                 % It's a file to run
-                                                toolsToExecute{end+1} = struct('tool', 'run_code_or_file', ...
-                                                    'args', struct('fileName', fileToRun, 'isFile', 'true'));
+                                                toolsToExecute{end+1} = struct('tool', 'run_code_file', ...
+                                                    'args', struct('fileName', fileToRun, 'isFile', true));
                                             else
                                                 % It's code to run
-                                                toolsToExecute{end+1} = struct('tool', 'run_code_or_file', ...
-                                                    'args', struct('codeStr', fileToRun, 'isFile', 'false'));
+                                                toolsToExecute{end+1} = struct('tool', 'run_code_file', ...
+                                                    'args', struct('codeStr', fileToRun, 'isFile', false));
                                             end
                                         % Add support for open_or_create_file tool (previously incorrectly referenced as open_file)
                                         elseif strcmp(toolName, 'open_or_create_file')
@@ -485,8 +485,8 @@ classdef Agent < handle
                                             end
                                         end
                                         
-                                        % Check if the file exists for run_code_or_file
-                                        if strcmp(execTool.tool, 'run_code_or_file') && ...
+                                        % Check if the file exists for run_code_file
+                                        if strcmp(execTool.tool, 'run_code_file') && ...
                                            isfield(execTool.args, 'fileName') && ...
                                            ~isempty(execTool.args.fileName)
                                            
@@ -499,21 +499,49 @@ classdef Agent < handle
                                             if exist(fullPath, 'file')
                                                 fprintf('File %s exists, will run it\n', fullPath);
                                                 execTool.args.fileName = fullPath;
+                                                % Make sure isFile is set to true as a boolean - MATLAB expects this format
+                                                execTool.args.isFile = true;
                                             else
                                                 fprintf('Warning: File %s does not exist, cannot run it\n', fullPath);
                                                 continue;  % Skip to next tool
                                             end
                                         end
                                         
-                                        % Execute the tool
-                                        [toolResult, ~] = obj.ToolBox.dispatchTool(execTool.tool, execTool.args);
+                                        % Execute the tool with enhanced debugging
+                                        fprintf('DEBUG: About to dispatch tool: %s with complete args: %s\n', execTool.tool, jsonencode(execTool.args));
+                                        
+                                        % Add debug statement specifically for the isFile parameter type
+                                        if strcmp(execTool.tool, 'run_code_file') && isfield(execTool.args, 'isFile')
+                                            fprintf('DEBUG: isFile parameter type: %s, value: %s\n', class(execTool.args.isFile), mat2str(execTool.args.isFile));
+                                        end
+                                        
+                                        % Use the normal dispatch method
+                                        try
+                                            [toolResult, isDoneLocal] = obj.ToolBox.dispatchTool(execTool.tool, execTool.args);
+                                            fprintf('DEBUG: Tool dispatch completed with isDone=%d\n', isDoneLocal);
+                                            if isfield(toolResult, 'status')
+                                                fprintf('DEBUG: Tool execution status: %s\n', toolResult.status);
+                                            end
+                                            if isfield(toolResult, 'output')
+                                                fprintf('DEBUG: Tool output: %s\n', toolResult.output);
+                                            end
+                                        catch toolExecErr
+                                            fprintf('DEBUG: Error during tool execution: %s\n', toolExecErr.message);
+                                            fprintf('DEBUG: Error stack:\n');
+                                            for stackIdx = 1:min(3, length(toolExecErr.stack))
+                                                fprintf('  %s (line %d)\n', toolExecErr.stack(stackIdx).name, toolExecErr.stack(stackIdx).line);
+                                            end
+                                            
+                                            % Create an error result
+                                            toolResult = struct('status', 'error', 'error', toolExecErr.message);
+                                        end
                                         
                                         % Add to tool log
                                         obj.toolLog{end+1} = struct('tool', execTool.tool, ...
                                                                  'args', execTool.args, ...
                                                                  'result', toolResult);
                                         
-                                        fprintf('Log tool execution completed\n');
+                                        fprintf('Log tool execution completed with %s status\n', toolResult.status);
                                     end
                                 catch execErr
                                     fprintf('Error executing log tool %d: %s\n', i, execErr.message);
@@ -532,7 +560,7 @@ classdef Agent < handle
                                 'snapshot', '');
                                 
                             % Add more specific summary based on tools executed
-                            if any(strcmp(cellfun(@(t) t.tool, toolsToExecute, 'UniformOutput', false), 'run_code_or_file'))
+                            if any(strcmp(cellfun(@(t) t.tool, toolsToExecute, 'UniformOutput', false), 'run_code_file'))
                                 finalResponse.summary = 'Successfully ran the code file.';
                             elseif any(strcmp(cellfun(@(t) t.tool, toolsToExecute, 'UniformOutput', false), 'open_or_create_file'))
                                 finalResponse.summary = 'Successfully created and opened the file.';
@@ -632,31 +660,31 @@ classdef Agent < handle
                                 % Execute pending run_code tool if present
                                 if ~isempty(fieldnames(obj.pendingRunCodeTool)) && ...
                                    isfield(obj.pendingRunCodeTool, 'tool') && ...
-                                   (strcmp(obj.pendingRunCodeTool.tool, 'run_code') || strcmp(obj.pendingRunCodeTool.tool, 'run_code_or_file')) && ...
+                                   strcmp(obj.pendingRunCodeTool.tool, 'run_code_file') && ...
                                    isfield(obj.pendingRunCodeTool, 'args') && ...
                                    isfield(obj.pendingRunCodeTool.args, 'codeStr')
                                     
-                                    fprintf('Executing pending run_code_or_file tool...\n');
+                                    fprintf('Executing pending run_code_file tool...\n');
                                     runCodeArgs = obj.pendingRunCodeTool.args;
                                     
                                     try
-                                        % Call the run_code_or_file tool directly
+                                        % Call the run_code_file tool directly
                                         fprintf('Running code: %s\n', runCodeArgs.codeStr);
-                                        runResult = tools.matlab.run_code_or_file(runCodeArgs.codeStr);
+                                        runResult = tools.matlab.run_code_file(runCodeArgs.codeStr);
                                         
                                         % Log the result
                                         if isfield(runResult, 'status') && strcmp(runResult.status, 'success')
                                             fprintf('Code execution successful:\n%s\n', runResult.output);
                                             
                                             % Add to tool log
-                                            obj.toolLog{end+1} = struct('tool', 'run_code_or_file', ...
+                                            obj.toolLog{end+1} = struct('tool', 'run_code_file', ...
                                                                      'args', runCodeArgs, ...
                                                                      'result', runResult);
                                         else
                                             fprintf('Code execution failed: %s\n', runResult.error);
                                         end
                                     catch runCodeErr
-                                        fprintf('Error executing run_code_or_file: %s\n', runCodeErr.message);
+                                        fprintf('Error executing run_code_file: %s\n', runCodeErr.message);
                                     end
                                     
                                     % Clear the pending tool
@@ -685,8 +713,8 @@ classdef Agent < handle
                         [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
                     end
                     
-                    % For debug mode: Any run_code or first tool call is considered complete
-                    if iterCount == 1 || strcmp(toolCall.tool, 'run_code')
+                    % For debug mode: Any run_code_file or first tool call is considered complete
+                    if iterCount == 1 || strcmp(toolCall.tool, 'run_code_file')
                         fprintf('Marking task as complete (debug mode)\n');
                         isDone = true;
                     end
@@ -719,11 +747,11 @@ classdef Agent < handle
                     
                     % Create response when:
                     % 1. Tool execution indicated task completion via isDone flag
-                    % 2. We executed a run_code command successfully
+                    % 2. We executed a run_code_file command successfully
                     % 3. We've handled special cases like "hello world" script
                     if isDone || ...
-                       (strcmp(toolCall.tool, 'run_code') && isfield(result, 'status') && strcmp(result.status, 'success')) || ...
-                       (contains(lower(userText), 'hello world') && strcmp(toolCall.tool, 'run_code'))
+                       (strcmp(toolCall.tool, 'run_code_file') && isfield(result, 'status') && strcmp(result.status, 'success')) || ...
+                       (contains(lower(userText), 'hello world') && strcmp(toolCall.tool, 'run_code_file'))
                         
                         fprintf('Task completed successfully, generating final response\n');
                         
@@ -734,8 +762,8 @@ classdef Agent < handle
                             'log', {obj.toolLog}, ...
                             'snapshot', '');
                         
-                        % Add specific summary for run_code tool
-                        if strcmp(toolCall.tool, 'run_code')
+                        % Add specific summary for run_code_file tool
+                        if strcmp(toolCall.tool, 'run_code_file')
                             if isfield(result, 'output')
                                 finalResponse.summary = sprintf('Successfully executed code. Output:\n%s', result.output);
                             else
@@ -918,7 +946,7 @@ classdef Agent < handle
         
         function [toolName, args] = parseLogString(logString)
             % PARSELOGSTRING Parse a log string to extract tool name and arguments
-            % Example input: "run_code_or_file(filename.m)" or "open_file(plot_sine.m, ...)"
+            % Example input: "run_code_file(filename.m)" or "open_file(plot_sine.m, ...)"
             
             toolName = '';
             args = '';
@@ -1061,7 +1089,7 @@ classdef Agent < handle
             contextMsg = [contextMsg, sprintf('1. Check if files exist before trying to run them\n')];
             contextMsg = [contextMsg, sprintf('2. Create files in the workspace folder before running them\n')];
             contextMsg = [contextMsg, sprintf('3. Use "open_or_create_file" tool for new files or to modify existing ones\n')];
-            contextMsg = [contextMsg, sprintf('4. Only use "run_code_or_file" after verifying the file exists\n')];
+            contextMsg = [contextMsg, sprintf('4. Only use "run_code_file" after verifying the file exists\n')];
             
             contextMessage = contextMsg;
         end

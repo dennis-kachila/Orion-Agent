@@ -41,14 +41,14 @@ else
     fprintf('✗ agent.Agent class NOT found! Check that the +agent directory is in the path.\n');
 end
 
-% Check for tools.matlab.run_code_or_file
+% Check for tools.matlab.run_code_file
 try
     % Try to evaluate the function directly for a more reliable check
-    test_result = tools.matlab.run_code_or_file('disp(''Path setup successful'')');
-    fprintf('✓ Successfully executed tools.matlab.run_code_or_file function!\n');
+    test_result = tools.matlab.run_code_file(fullfile(rootDir, '+tools', '+matlab', 'test_setup.m'));
+    fprintf('✓ Successfully executed tools.matlab.run_code_file function!\n');
 catch ME
-    fprintf('✗ Error executing tools.matlab.run_code_or_file: %s\n', ME.message);
-    fprintf('  Looking for file at: %s\n', fullfile(rootDir, '+tools', '+matlab', 'run_code_or_file.m'));
+    fprintf('✗ Error executing tools.matlab.run_code_file: %s\n', ME.message);
+    fprintf('  Looking for file at: %s\n', fullfile(rootDir, '+tools', '+matlab', 'run_code_file.m'));
 end
 
 % Ask user if they want to save the path for future sessions

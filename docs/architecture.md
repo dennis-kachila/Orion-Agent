@@ -41,7 +41,7 @@ classDiagram
     
     class Tools {
         +open_or_create_file()
-        +run_code_or_file()
+        +run_code_file()
         +create_new_model()
         +simulate_model()
     }
