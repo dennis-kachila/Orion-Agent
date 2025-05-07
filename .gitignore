@@ -31,3 +31,7 @@ llm_settings.mat
 # all .mat files
 *.mat
 *.mlapp
+
+
+# Temporary files
+temp_gemini_test
