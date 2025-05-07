@@ -188,7 +188,9 @@ classdef Agent < handle
                     
                     % Parse JSON response to get tool and args
                     try
-                        toolCall = jsondecode(llmResponse);
+                        % Improve JSON parsing by first checking for and removing markdown code blocks
+                        cleanedResponse = cleanMarkdownFormatting(llmResponse);
+                        toolCall = jsondecode(cleanedResponse);
                         
                         if ~isfield(toolCall, 'tool') || ~isfield(toolCall, 'args')
                             error('Invalid LLM response format. Expected fields "tool" and "args".');
@@ -627,6 +629,42 @@ classdef Agent < handle
             errorMsg = sprintf('Error: %s', msg);
             if ~isempty(ME.stack)
                 errorMsg = sprintf('%s\nIn %s at line %d', errorMsg, ME.stack(1).name, ME.stack(1).line);
+            end
+        end
+    end
+    
+    methods (Static)
+        function cleanedText = cleanMarkdownFormatting(text)
+            % CLEANMARKDOWNFORMATTING Remove markdown code block formatting from responses
+            % This helps ensure JSON can be properly parsed later
+            
+            % First check if we need processing (performance optimization)
+            if ~contains(text, '```')
+                cleanedText = text;
+                return;
+            end
+            
+            % Extract content from code blocks if present
+            try
+                % Match for markdown code blocks with optional language specifier
+                % Example: ```json ... ``` or just ``` ... ```
+                pattern = '```(?:json|javascript|js)?\s*([\s\S]*?)\s*```';
+                
+                % Find if there are code blocks
+                [matches, ~] = regexp(text, pattern, 'tokens', 'match');
+                
+                % If we found code blocks, extract the content
+                if ~isempty(matches) && ~isempty(matches{1})
+                    % Use the content of the first code block (usually the JSON payload)
+                    cleanedText = matches{1}{1};
+                    fprintf('Extracted content from markdown code block\n');
+                else
+                    % No code blocks found, return original
+                    cleanedText = text;
+                end
+            catch
+                % If any error in parsing, return original to be safe
+                cleanedText = text;
             end
         end
     end

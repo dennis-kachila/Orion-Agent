@@ -156,6 +156,10 @@ function response = callGPT(prompt)
         end
         
         fprintf('API call completed successfully\n');
+        
+        % Clean up markdown code blocks if present to ensure proper JSON parsing later
+        response = cleanMarkdownCodeBlocks(response);
+        
     catch ME
         % If we hit a rate limit error, remember this for future calls
         if contains(ME.message, 'Too Many Requests') || contains(ME.message, '429')
@@ -210,8 +214,8 @@ function apiConfig = getAPIConfig()
             if ~isempty(geminiKey)
                 fprintf('Using Gemini API key from environment variable\n');
                 config.provider = 'gemini';
-                config.model = 'gemini-1.5-pro';
-                config.endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+                config.model = 'gemini-1.5-flash'; % Changed from gemini-1.5-pro to gemini-1.5-flash
+                config.endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
                 config.apiKey = geminiKey;
             else
                 % No valid API keys found, default to debug mode
@@ -308,12 +312,12 @@ function response = callOpenAI(prompt, config)
 end
 
 function response = callGemini(prompt, config)
-    % CALLGEMINI Call Google Gemini API
+    % CALLGEMINI Call Google Gemini API with improved response handling
     try
         % Prepare API request
         options = weboptions('HeaderFields', {'Content-Type', 'application/json'; ...
                                              'x-goog-api-key', config.apiKey}, ...
-                            'Timeout', 60);
+                            'Timeout', 120);
         
         requestBody = struct(); % Initialize requestBody
         system_prompt_text = '';
@@ -396,13 +400,31 @@ function response = callGemini(prompt, config)
         fprintf('Calling Gemini API endpoint: %s\n', config.endpoint);
         responseData = webwrite(config.endpoint, requestJSON, options);
         
-        % Extract response content
+        % Extract response content with improved handling for Gemini structure
         if isfield(responseData, 'candidates') && ~isempty(responseData.candidates)
-            if isfield(responseData.candidates{1}, 'content') && ...
-               isfield(responseData.candidates{1}.content, 'parts') && ...
-               ~isempty(responseData.candidates{1}.content.parts) && ...
-               isfield(responseData.candidates{1}.content.parts{1}, 'text')
-                response = responseData.candidates{1}.content.parts{1}.text;
+            candidate = responseData.candidates;
+            % Handle both cell array and direct structure formats
+            if iscell(candidate)
+                candidate = candidate{1};
+            end
+            
+            if isfield(candidate, 'content') && ...
+               isfield(candidate.content, 'parts') && ...
+               ~isempty(candidate.content.parts)
+                
+                parts = candidate.content.parts;
+                % Handle both cell array and direct structure formats for parts
+                if iscell(parts)
+                    parts = parts{1};
+                end
+                
+                if isfield(parts, 'text')
+                    response = parts.text;
+                    % Clean any markdown code blocks at this stage
+                    response = cleanMarkdownCodeBlocks(response);
+                else
+                    error('Missing text field in Gemini response parts structure');
+                end
             else
                 error('Unexpected response format from Gemini API');
             end
@@ -496,5 +518,39 @@ function response = callLocalLLM(prompt, config)
     catch ME
         % Handle API errors
         error('Local LLM API error: %s', ME.message);
+    end
+end
+
+function cleanedResponse = cleanMarkdownCodeBlocks(response)
+    % CLEANMARKDOWNCODEBLOCKS Remove markdown code block formatting from responses
+    % This helps ensure JSON can be properly parsed later
+    
+    % First check if we need processing (performance optimization)
+    if ~contains(response, '```')
+        cleanedResponse = response;
+        return;
+    end
+    
+    % Extract content from code blocks if present
+    try
+        % Match for markdown code blocks with optional language specifier
+        % Example: ```json ... ``` or just ``` ... ```
+        pattern = '```(?:json|javascript|js)?\s*([\s\S]*?)\s*```';
+        
+        % Find if there are code blocks
+        [matches, ~] = regexp(response, pattern, 'tokens', 'match');
+        
+        % If we found code blocks, extract the content
+        if ~isempty(matches) && ~isempty(matches{1})
+            % Use the content of the first code block (usually the JSON payload)
+            cleanedResponse = matches{1}{1};
+            fprintf('Extracted content from markdown code block\n');
+        else
+            % No code blocks found, return original
+            cleanedResponse = response;
+        end
+    catch
+        % If any error in parsing, return original to be safe
+        cleanedResponse = response;
     end
 end
