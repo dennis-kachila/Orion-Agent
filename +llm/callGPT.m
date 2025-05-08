@@ -1,4 +1,4 @@
-    % CALLGPT Communicates with OpenAI API or local Llama endpoint
+    % CALLGPT Communicates with LLM API endpoint 
     % Handles HTTP requests to LLM services and returns response
     %
     % Input:
@@ -7,7 +7,7 @@
     % Output:
     %   response - String containing the LLM response
 function response = callGPT(prompt)
-    % CALLGPT Communicates with OpenAI API or local Llama endpoint
+    % CALLGPT Communicates with LLM API endpoint
     % Handles HTTP requests to LLM services and returns response
     %
     % Input:
