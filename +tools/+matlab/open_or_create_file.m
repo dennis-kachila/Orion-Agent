@@ -1,20 +1,48 @@
-function result = open_or_create_file(fileName, content)
+function result = open_or_create_file(fileName, content, overwriteExisting)
     % OPEN_OR_CREATE_FILE Create file if missing, then open in MATLAB Editor
     % 
     % Inputs:
     %   fileName - Path to the file to open or create
     %   content - (Optional) Initial content to write if file doesn't exist
+    %   overwriteExisting - (Optional) Boolean to overwrite content even if file exists (default: false)
     %
     % Output:
     %   result - Structure containing document object and status
     
+    fprintf('*** ENTRY POINT: +tools/+matlab/open_or_create_file.m CALLED ***\n');
+    fprintf('*** FUNCTION PATH: %s ***\n', mfilename('fullpath'));
+    fprintf('*** TIMESTAMP: %s ***\n', datestr(now, 'yyyy-mm-dd HH:MM:SS.FFF'));
+    
+    % Create variable to track execution path for debugging
+    debugInfo = struct('entryTime', now, 'steps', {{}});
+    debugInfo.steps{end+1} = 'Function entry';
+    
+    % Default for overwriteExisting is false (only write if file doesn't exist)
+    if nargin < 3
+        overwriteExisting = false;
+    end
+    
     try
         fprintf('=== DEBUG START: open_or_create_file ===\n');
         fprintf('Called with fileName: "%s"\n', fileName);
+        debugInfo.steps{end+1} = 'Debug start logged';
         if nargin > 1
             fprintf('Content provided: %d bytes\n', length(content));
             if ~isempty(content)
                 fprintf('Content snippet: "%s..."\n', content(1:min(30, length(content))));
+            end
+            fprintf('Overwrite existing: %s\n', mat2str(overwriteExisting));
+            
+            % Check for escaped backslashes in content and fix them
+            if contains(content, '\\n') || contains(content, '\\t') || contains(content, '\\r')
+                fprintf('Detected escaped backslashes in content, unescaping...\n');
+                % Replace common escaped sequences
+                content = strrep(content, '\\n', newline);
+                content = strrep(content, '\\t', sprintf('\t'));
+                content = strrep(content, '\\r', sprintf('\r'));
+                content = strrep(content, '\\''', '''');
+                content = strrep(content, '\\"', '"');
+                fprintf('Unescaped content snippet: "%s..."\n', content(1:min(30, length(content))));
             end
         else
             fprintf('No content provided (nargin = %d)\n', nargin);
@@ -95,9 +123,13 @@ function result = open_or_create_file(fileName, content)
             end
         end
         
-        % Write content if provided and file doesn't exist
-        if nargin > 1 && ~isempty(content) && ~fileExists
-            fprintf('Writing initial content to new file (length: %d)\n', length(content));
+        % Write content if provided and either file doesn't exist or overwriteExisting is true
+        if nargin > 1 && ~isempty(content) && (~fileExists || overwriteExisting)
+            if ~fileExists
+                fprintf('Writing initial content to new file (length: %d)\n', length(content));
+            else
+                fprintf('Overwriting existing file with new content (length: %d)\n', length(content));
+            end
             
             % Write the content to the file
             fid = fopen(fileName, 'w');
@@ -108,7 +140,12 @@ function result = open_or_create_file(fileName, content)
             bytesWritten = fprintf(fid, '%s', content);
             fclose(fid);
             
-            fprintf('Initial content written (%d bytes)\n', bytesWritten);
+            % Verify file was actually created
+            if ~exist(fileName, 'file')
+                error('Failed to create file: %s - File does not exist after write attempt', fileName);
+            end
+            
+            fprintf('Content written successfully (%d bytes)\n', bytesWritten);
             fileExists = true;
         end
         
@@ -116,29 +153,63 @@ function result = open_or_create_file(fileName, content)
         try
             document = matlab.desktop.editor.openDocument(fileName);
             fprintf('File opened in MATLAB Editor\n');
+            debugInfo.steps{end+1} = 'File opened in editor';
+            
+            % Ensure file is saved to disk
+            if document.Modified
+                document.save();
+                fprintf('File saved to disk via editor\n');
+                debugInfo.steps{end+1} = 'File saved via editor';
+            end
             
             % Return result
             editorStatus = 'Created and opened new file';
             if fileExists
                 editorStatus = 'Opened existing file';
+                if nargin > 1 && ~isempty(content) && overwriteExisting
+                    editorStatus = 'Overwritten and opened existing file';
+                end
             end
             result = struct('status', 'success', ...
                            'summary', sprintf('Opened or created file: %s', fileName), ...
                            'fileName', fileName, ...
                            'documentInfo', struct('path', document.Filename, ...
                                                  'editorStatus', editorStatus));
+            debugInfo.steps{end+1} = 'Result struct created - successful case';
         catch ME
             % If editor can't be opened, return partial success
             fprintf('Warning: Could not open file in editor: %s\n', ME.message);
+            debugInfo.steps{end+1} = sprintf('Editor open failed: %s', ME.message);
+            
             result = struct('status', 'partial_success', ...
                            'summary', sprintf('Opened or created file: %s', fileName), ...
                            'fileName', fileName, ...
                            'error', ME.message);
+            debugInfo.steps{end+1} = 'Result struct created - partial success case';
         end
     catch ME
         % Handle any errors
+        debugInfo.steps{end+1} = sprintf('Error occurred: %s', ME.message);
+        if ~isempty(ME.stack)
+            debugInfo.steps{end+1} = sprintf('Error at: %s line %d', ME.stack(1).name, ME.stack(1).line);
+        end
+        
         errorMsg = agent.utils.safeRedactErrors(ME);
         result = struct('status', 'error', 'error', errorMsg, ...
                        'summary', sprintf('Failed to open or create file: %s', errorMsg));
+        debugInfo.steps{end+1} = 'Result struct created - error case';
     end
+    
+    % Print exit debug information
+    exitTime = now;
+    executionTime = (exitTime - debugInfo.entryTime) * 86400; % Convert to seconds
+    
+    fprintf('*** EXIT POINT: +tools/+matlab/open_or_create_file.m ***\n');
+    fprintf('*** EXIT STATUS: %s ***\n', result.status);
+    fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+    fprintf('*** EXECUTION PATH (%d steps): ***\n', length(debugInfo.steps));
+    for i = 1:length(debugInfo.steps)
+        fprintf('***   Step %d: %s ***\n', i, debugInfo.steps{i});
+    end
+    fprintf('*** END OF FUNCTION EXECUTION ***\n');
 end

@@ -9,22 +9,36 @@ classdef Agent < handle
         toolLog % Maintains a log of all tool calls made
         modifiedFiles % Tracks files that have been created or modified
         pendingRunCodeTool % Stores a run_code_file tool to execute after primary tool
+        debugInfo % Stores debugging information across methods
     end
     
     methods
         function obj = Agent()
             % Constructor - initialize the agent components
+            fprintf('*** AGENT.m INITIALIZATION STARTED ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss.SSS'));
+            
+            % Initialize debug info
+            obj.debugInfo = struct('startTime', datetime("now"), 'steps', {{}}, 'methodCalls', {{}});
+            obj.debugInfo.steps{end+1} = 'Agent constructor started';
+            
             obj.ToolBox = agent.ToolBox();
+            obj.debugInfo.steps{end+1} = 'ToolBox initialized';
+            
             obj.chatHistory = struct('role', {}, 'content', {});
             obj.llmInterface = @llm.callGPT;
             obj.toolLog = {};
             obj.modifiedFiles = {};
             obj.pendingRunCodeTool = struct();
             
+            obj.debugInfo.steps{end+1} = 'Agent properties initialized';
+            
             % Add system message to history
             try
                 % Use fully qualified path to avoid namespace issues
                 systemPrompt = llm.promptTemplates.getSystemPrompt();
+                obj.debugInfo.steps{end+1} = 'System prompt retrieved';
+                
                 % Add extra context/examples if the prompt is too short
                 if strlength(systemPrompt) < 100
                     systemPrompt = [systemPrompt, ...
@@ -34,10 +48,14 @@ classdef Agent < handle
                         '{"tool": "open_or_create_file", "args": {"fileName": "hello.m", "content": "disp(''Hello World'');"}}\n', ...
                         'If you need to run code, use the run_code_file tool.\n', ...
                         'If you are unsure, ask the user for clarification.'];
+                    obj.debugInfo.steps{end+1} = 'Extended system prompt with additional context';
                 end
                 obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
+                obj.debugInfo.steps{end+1} = 'System message added to chat history';
             catch ME
                 warning(ME.identifier, '%s', ME.message);
+                obj.debugInfo.steps{end+1} = sprintf('Error loading system prompt: %s', ME.message);
+                
                 % Use a detailed default prompt if the system prompt can't be loaded
                 obj.chatHistory(end+1) = struct('role', 'system', 'content', [
                     'You are Orion, an expert AI Agent for MATLAB and Simulink.\n', ...
@@ -48,12 +66,51 @@ classdef Agent < handle
                     'If you are unsure, ask the user for clarification.\n', ...
                     'Be concise and helpful.'
                 ]);
+                obj.debugInfo.steps{end+1} = 'Default system message added to chat history';
             end
+            
+            fprintf('*** AGENT INITIALIZATION COMPLETE ***\n');
+            fprintf('*** Initialization steps: %d ***\n', length(obj.debugInfo.steps));
+            fprintf('*** TIMESTAMP: %s ***\n', datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss.SSS'));
         end
         
         function response = processUserInput(obj, userText)
             % Process user input and return agent response
+            fprintf('\n*** ENTRY: processUserInput ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss.SSS'));
+            methodDebugInfo = struct('entryTime', datetime('now'), 'steps', {{}});
+            methodDebugInfo.steps{end+1} = 'Method entry';
+
+            % Get the workspace folder
+            thisFile = mfilename('fullpath');
+            methodDebugInfo.steps{end+1} = sprintf('Agent file path: %s', thisFile);
             
+            thisFolder = fileparts(thisFile);
+            methodDebugInfo.steps{end+1} = sprintf('Agent folder path: %s', thisFolder);
+            
+            projectRoot = fileparts(thisFolder);
+            methodDebugInfo.steps{end+1} = sprintf('Project root path: %s', projectRoot); 
+            
+            workspaceFolder = fullfile(projectRoot, 'orion_workspace');
+            methodDebugInfo.steps{end+1} = sprintf('Workspace folder path: %s', workspaceFolder);
+
+            % Check if the workspace folder exists, use it if it does, and create it if not
+            if exist(workspaceFolder, 'dir')
+                fprintf('Workspace folder exists: %s\n', workspaceFolder);
+                fprintf('Using existing workspace folder.\n');
+                methodDebugInfo.steps{end+1} = 'Workspace folder exists';
+            else
+                fprintf('Workspace folder does not exist: %s\n', workspaceFolder);
+                fprintf('Creating workspace folder.\n');
+                methodDebugInfo.steps{end+1} = 'Creating workspace folder';
+                [mkdirSuccess, mkdirMsg] = mkdir(workspaceFolder);
+                if mkdirSuccess
+                    methodDebugInfo.steps{end+1} = 'Workspace folder created successfully';
+                else
+                    methodDebugInfo.steps{end+1} = sprintf('Failed to create workspace folder: %s', mkdirMsg);
+                end
+            end
+
             % Check for @agent commands
             if startsWith(strtrim(userText), "@agent")
                 % Extract the command part after @agent
@@ -124,19 +181,6 @@ classdef Agent < handle
                 end
             end
             
-            % Create a workspace folder for files if it doesn't exist
-            % Use path relative to the Agent.m file itself for consistent location
-            thisFile = mfilename('fullpath');
-            thisFolder = fileparts(thisFile);
-            projectRoot = fileparts(thisFolder); % Go up from +agent folder to project root
-            workspaceFolder = fullfile(projectRoot, 'orion_workspace');
-            
-            fprintf('Using workspace folder: %s\n', workspaceFolder);
-            if ~exist(workspaceFolder, 'dir')
-                fprintf('Creating workspace folder: %s\n', workspaceFolder);
-                mkdir(workspaceFolder);
-            end
-            
             % Get workspace context to inform LLM
             workspaceContext = obj.getWorkspaceContext(workspaceFolder);
             
@@ -174,7 +218,6 @@ classdef Agent < handle
             2. Acts by calling an external tool or function (e.g., add_block, sim).
             3. Observes the tool’s result (success, error message, numeric output).
             4. Feeds that observation back into its next step of Reasoning, and the cycle repeats until the goal is reached or the agent stops.
-             
             
             %}
 
@@ -380,6 +423,7 @@ classdef Agent < handle
                         
                         if autoExecute && ~isempty(toolsToExecute)
                             fprintf('Auto-execute enabled: Will execute all tool calls without confirmation\n');
+                            methodDebugInfo.steps{end+1} = 'Auto-execution of tools started';
                             % Wait a moment for any open_file operations to complete
                             pause(0.5);
                             
@@ -388,91 +432,122 @@ classdef Agent < handle
                                 try
                                     % Get the tool to execute
                                     execTool = toolsToExecute{i};
+                                    methodDebugInfo.steps{end+1} = sprintf('Processing log tool %d: %s', i, execTool.tool);
                                     
                                     if isstruct(execTool) && isfield(execTool, 'tool') && isfield(execTool, 'args')
                                         fprintf('Executing log tool %d: %s\n', i, execTool.tool);
                                         fprintf('DEBUG: Tool args: %s\n', jsonencode(execTool.args));
+                                        methodDebugInfo.steps{end+1} = sprintf('Tool args: %s', jsonencode(execTool.args));
                                         
                                         % For open_or_create_file, additional debugging and proper file handling
                                         if strcmp(execTool.tool, 'open_or_create_file')
                                             fprintf('DEBUG: About to call open_or_create_file with:\n');
+                                            methodDebugInfo.steps{end+1} = 'Preparing open_or_create_file call';
+                                            
                                             if isfield(execTool.args, 'fileName')
                                                 fprintf('  fileName: %s\n', execTool.args.fileName);
+                                                methodDebugInfo.steps{end+1} = sprintf('fileName: %s', execTool.args.fileName);
                                                 
                                                 % Ensure the file path is properly set for workspace folder
                                                 if ~contains(execTool.args.fileName, workspaceFolder)
                                                     % If this is a simple filename without path, add workspace folder
                                                     [~, fname, fext] = fileparts(execTool.args.fileName);
+                                                    methodDebugInfo.steps{end+1} = sprintf('File parts: %s, %s', fname, fext);
+                                                    
                                                     if isempty(fileparts(execTool.args.fileName))
                                                         oldFileName = execTool.args.fileName;
                                                         execTool.args.fileName = fullfile(workspaceFolder, oldFileName);
                                                         fprintf('  Corrected file path: %s\n', execTool.args.fileName);
+                                                        methodDebugInfo.steps{end+1} = sprintf('Corrected path: %s', execTool.args.fileName);
                                                     end
                                                 end
                                             else
                                                 fprintf('  fileName: MISSING\n');
+                                                methodDebugInfo.steps{end+1} = 'fileName is missing';
                                             end
-                                        end
-                                        
-                                        % Check if the file exists for run_code_file
-                                        if strcmp(execTool.tool, 'run_code_file') && ...
-                                           isfield(execTool.args, 'fileName') && ...
-                                           ~isempty(execTool.args.fileName)
-                                           
-                                            % Ensure file path is set correctly with workspace folder
-                                            fileName = execTool.args.fileName;
-                                            workspaceFolder = fullfile(pwd, 'orion_workspace');
-                                            fullPath = fullfile(workspaceFolder, fileName);
                                             
-                                            % Check if the file exists
-                                            if exist(fullPath, 'file')
-                                                fprintf('File %s exists, will run it\n', fullPath);
-                                                execTool.args.fileName = fullPath;
+                                            % Check if content is available
+                                            if ~isfield(execTool.args, 'content') || isempty(execTool.args.content)
+                                                fprintf('  content: MISSING or EMPTY\n');
+                                                methodDebugInfo.steps{end+1} = 'content is missing or empty';
                                             else
-                                                fprintf('Warning: File %s does not exist, cannot run it\n', fullPath);
-                                                continue;  % Skip to next tool
+                                                contentLength = length(execTool.args.content);
+                                                fprintf('  content length: %d bytes\n', contentLength);
+                                                methodDebugInfo.steps{end+1} = sprintf('content length: %d bytes', contentLength);
+                                                
+                                                % Check for escaped backslashes in content
+                                                if contains(execTool.args.content, '\\n')
+                                                    fprintf('  WARNING: Content contains escaped backslashes (\\\\n)\n');
+                                                    methodDebugInfo.steps{end+1} = 'Content contains escaped backslashes';
+                                                end
+                                            end
+                                            
+                                            % Add overwriteExisting flag if not present
+                                            if ~isfield(execTool.args, 'overwriteExisting')
+                                                execTool.args.overwriteExisting = true;
+                                                fprintf('  Added overwriteExisting=true to ensure content is written\n');
+                                                methodDebugInfo.steps{end+1} = 'Added overwriteExisting=true';
                                             end
                                         end
                                         
                                         % Execute the tool with enhanced debugging
                                         fprintf('DEBUG: About to dispatch tool: %s with complete args: %s\n', execTool.tool, jsonencode(execTool.args));
+                                        methodDebugInfo.steps{end+1} = 'About to dispatch tool';
                                         
-                                        % Debug statement for run_code_file to ensure it has the right parameters
-                                        if strcmp(execTool.tool, 'run_code_file')
-                                            fprintf('DEBUG: run_code_file being called with fileName: %s\n', execTool.args.fileName);
+                                        % Before dispatching, validate the tool is registered
+                                        if ~obj.ToolBox.isToolRegistered(execTool.tool)
+                                            fprintf('ERROR: Tool %s is not registered!\n', execTool.tool);
+                                            methodDebugInfo.steps{end+1} = sprintf('Tool %s is not registered', execTool.tool);
+                                            continue;
                                         end
                                         
-                                        % Use the normal dispatch method
+                                        % Use the normal dispatch method with extra debug
                                         try
+                                            fprintf('DEBUG: Calling ToolBox.dispatchTool for %s\n', execTool.tool);
+                                            methodDebugInfo.steps{end+1} = sprintf('Calling dispatchTool for %s', execTool.tool);
+                                            
+                                            % Check which module will be called
+                                            if strcmp(execTool.tool, 'open_or_create_file')
+                                                toolPath = which(['tools.matlab.', execTool.tool]);
+                                                fprintf('DEBUG: tool path = %s\n', toolPath);
+                                                methodDebugInfo.steps{end+1} = sprintf('Tool path: %s', toolPath);
+                                            end
+                                            
                                             [toolResult, isDoneLocal] = obj.ToolBox.dispatchTool(execTool.tool, execTool.args);
+                                            methodDebugInfo.steps{end+1} = sprintf('Tool dispatch returned isDone=%d', isDoneLocal);
                                             
-                                            % Create default toolResult structure if missing required fields
-                                            if ~isstruct(toolResult)
-                                                fprintf('Converting non-struct toolResult to struct\n');
-                                                toolResult = struct('output', toolResult);
+                                            % Additional verification for file creation
+                                            if strcmp(execTool.tool, 'open_or_create_file') && isfield(execTool.args, 'fileName')
+                                                fileName = execTool.args.fileName;
+                                                if exist(fileName, 'file')
+                                                    fprintf('VERIFICATION: File %s exists on disk after tool execution\n', fileName);
+                                                    methodDebugInfo.steps{end+1} = sprintf('File %s verified to exist', fileName);
+                                                    
+                                                    % Check file size
+                                                    fileInfo = dir(fileName);
+                                                    if isempty(fileInfo)
+                                                        fprintf('WARNING: Could not get file info for %s\n', fileName);
+                                                        methodDebugInfo.steps{end+1} = 'Could not get file info';
+                                                    else
+                                                        fprintf('File size: %d bytes\n', fileInfo(1).bytes);
+                                                        methodDebugInfo.steps{end+1} = sprintf('File size: %d bytes', fileInfo(1).bytes);
+                                                        
+                                                        % Add to modified files list
+                                                        if ~ismember(fileName, obj.modifiedFiles)
+                                                            obj.modifiedFiles{end+1} = fileName;
+                                                            fprintf('Added file to modifiedFiles list: %s\n', fileName);
+                                                            methodDebugInfo.steps{end+1} = 'Added file to modifiedFiles list';
+                                                        end
+                                                    end
+                                                else
+                                                    fprintf('ERROR: File %s does NOT exist after tool execution!\n', fileName);
+                                                    methodDebugInfo.steps{end+1} = sprintf('File %s does not exist after execution', fileName);
+                                                end
                                             end
                                             
-                                            % Ensure status field exists
-                                            if ~isfield(toolResult, 'status')
-                                                fprintf('Adding default status field to toolResult\n');
-                                                toolResult.status = 'success';
-                                            end
-                                            
-                                            % Now safe to access the status field
-                                            fprintf('Log tool execution completed with %s status\n', toolResult.status);
-                                            
-                                            fprintf('DEBUG: Tool dispatch completed with isDone=%d\n', isDoneLocal);
-                                            % Check if status field exists before accessing it
-                                            if isfield(toolResult, 'status')
-                                                fprintf('Log tool execution completed with %s status\n', toolResult.status);
-                                            else
-                                                fprintf('Log tool execution completed (status field not present)\n');
-                                            end
-                                            if isfield(toolResult, 'output')
-                                                fprintf('DEBUG: Tool output: %s\n', toolResult.output);
-                                            end
                                         catch toolExecErr
                                             fprintf('DEBUG: Error during tool execution: %s\n', toolExecErr.message);
+                                            methodDebugInfo.steps{end+1} = sprintf('Tool execution error: %s', toolExecErr.message);
                                             fprintf('DEBUG: Error stack:\n');
                                             for stackIdx = 1:min(3, length(toolExecErr.stack))
                                                 fprintf('  %s (line %d)\n', toolExecErr.stack(stackIdx).name, toolExecErr.stack(stackIdx).line);
@@ -486,41 +561,28 @@ classdef Agent < handle
                                         obj.toolLog{end+1} = struct('tool', execTool.tool, ...
                                                                  'args', execTool.args, ...
                                                                  'result', toolResult);
+                                        methodDebugInfo.steps{end+1} = 'Added tool execution to log';
                                         
                                         fprintf('Log tool execution completed with %s status\n', toolResult.status);
                                     end
                                 catch execErr
                                     fprintf('Error executing log tool %d: %s\n', i, execErr.message);
+                                    methodDebugInfo.steps{end+1} = sprintf('Error in log tool execution: %s', execErr.message);
                                 end
                             end
                             
-                            % Mark tools from log as executed
-                            toolsExecutedFromLog = true;
-                            
-                            % Generate successful response after executing tools from log
-                            fprintf('Generating successful response after executing log tools\n');
-                            finalResponse = struct(...
-                                'summary', 'Task completed successfully', ...
-                                'files', {obj.modifiedFiles}, ...
-                                'log', {obj.toolLog}, ...
-                                'snapshot', '');
-                                
-                            % Add more specific summary based on tools executed
-                            if any(strcmp(cellfun(@(t) t.tool, toolsToExecute, 'UniformOutput', false), 'run_code_file'))
-                                finalResponse.summary = 'Successfully ran the code file.';
-                            elseif any(strcmp(cellfun(@(t) t.tool, toolsToExecute, 'UniformOutput', false), 'open_or_create_file'))
-                                finalResponse.summary = 'Successfully created and opened the file.';
+                            % Print summary of tool execution
+                            fprintf('\n*** TOOL EXECUTION SUMMARY ***\n');
+                            fprintf('Tools executed: %d\n', length(toolsToExecute));
+                            fprintf('Modified files: %d\n', length(obj.modifiedFiles));
+                            if ~isempty(obj.modifiedFiles)
+                                for i = 1:length(obj.modifiedFiles)
+                                    fprintf('  %d. %s\n', i, obj.modifiedFiles{i});
+                                end
                             end
+                            fprintf('*** END TOOL EXECUTION SUMMARY ***\n\n');
                             
-                            % Convert to JSON
-                            response = jsonencode(finalResponse);
-                            successfulResponse = true;
-                            
-                            % Skip redundant execution if tools from log were already executed
-                            if toolsExecutedFromLog
-                                fprintf('Skipping redundant tool execution after processing log tools\n');
-                                continue;
-                            end
+                            methodDebugInfo.steps{end+1} = 'Tool execution completed';
                         end
                         
                         % Skip redundant execution if tools from log were already executed
@@ -546,122 +608,74 @@ classdef Agent < handle
                         fullFilePath = fullfile(workspaceFolder, [filename, ext]);
                         fprintf('Creating file in workspace: %s\n', fullFilePath);
                         
-                        % Write content directly to file
-                        try
-                            % Make sure the directory exists
-                            if ~exist(workspaceFolder, 'dir')
-                                fprintf('Creating directory: %s\n', workspaceFolder);
-                                [mkdirSuccess, mkdirMsg] = mkdir(workspaceFolder);
-                                if ~mkdirSuccess
-                                    fprintf('Warning: Could not create directory: %s\n', mkdirMsg);
-                                end
+                        % Use centralized file writing method
+                        [result, writeSuccess] = obj.centralizedWriteFile(fullFilePath, toolCall.args.content);
+                        
+                        % Set isDone based on success of file creation
+                        isDone = writeSuccess;
+                        
+                        if writeSuccess
+                            % Add to modified files list if not already there
+                            if ~ismember(fullFilePath, obj.modifiedFiles)
+                                obj.modifiedFiles{end+1} = fullFilePath;
+                                fprintf('Added file to modified files list\n');
                             end
-                            
-                            % Write file with robust error handling
-                            fid = fopen(fullFilePath, 'w');
-                            if fid == -1
-                                % Try to diagnose the file access issue
-                                [folderExists, ~, ~] = exist(workspaceFolder, 'dir');
-                                [fileExists, ~, ~] = exist(fullFilePath, 'file');
-                                fprintf('Diagnostic: Folder exists: %d, File exists: %d\n', folderExists, fileExists);
+                             
+                            % Execute pending run_code tool if present
+                            if ~isempty(fieldnames(obj.pendingRunCodeTool)) && ...
+                              isfield(obj.pendingRunCodeTool, 'tool') && ...
+                              strcmp(obj.pendingRunCodeTool.tool, 'run_code_file') && ...
+                              isfield(obj.pendingRunCodeTool.args, 'codeStr')
                                 
-                                error('Could not open file for writing: %s', fullFilePath);
-                            end
-                            
-                            fprintf('File opened successfully, writing content (%d characters)\n', length(toolCall.args.content));
-                            bytesWritten = fprintf(fid, '%s', toolCall.args.content);
-                            fclose(fid);
-                            fprintf('Wrote %d bytes to file\n', bytesWritten);
-                            
-                            % Verify file was created
-                            if exist(fullFilePath, 'file')
-                                fprintf('File successfully created: %s\n', fullFilePath);
-                                
-                                % Add to modified files list if not already there
-                                if ~ismember(fullFilePath, obj.modifiedFiles)
-                                    obj.modifiedFiles{end+1} = fullFilePath;
-                                    fprintf('Added file to modified files list\n');
-                                end
-                                
-                                % Create successful result struct
-                                result = struct('status', 'success', ...
-                                               'fileName', fullFilePath, ...
-                                               'documentInfo', struct('path', fullFilePath, ...
-                                                                     'editorStatus', 'File created successfully'));
-                                                                     
-                                % Now try to open in editor (but don't fail if this doesn't work)
+                                fprintf('Executing pending run_code_file tool...\n');
                                 try
-                                    document = matlab.desktop.editor.openDocument(fullFilePath);
-                                    fprintf('File opened in editor\n');
-                                    result.documentInfo.editorStatus = 'File created and opened in editor';
-                                catch editorME
-                                    fprintf('Note: Could not open file in editor: %s\n', editorME.message);
-                                end
-                                
-                                % Set this directly to make sure file creation works
-                                fprintf('Setting isDone to true after successful file creation\n');
-                                isDone = true;
-                                
-                                % Execute pending run_code tool if present
-                                if ~isempty(fieldnames(obj.pendingRunCodeTool)) && ...
-                                   isfield(obj.pendingRunCodeTool, 'tool') && ...
-                                   strcmp(obj.pendingRunCodeTool.tool, 'run_code_file') && ...
-                                   isfield(obj.pendingRunCodeTool, 'args') && ...
-                                   isfield(obj.pendingRunCodeTool.args, 'codeStr')
-                                    
-                                    fprintf('Executing pending run_code_file tool...\n');
-                                    runCodeArgs = obj.pendingRunCodeTool.args;
-                                    
+                                    % Call the run_code_file tool with centralized error handling
                                     try
-                                        % Call the run_code_file tool directly
-                                        fprintf('Running code: %s\n', runCodeArgs.codeStr);
-                                        runResult = tools.matlab.run_code_file(runCodeArgs.codeStr);
+                                        fprintf('Running code: %s\n', obj.pendingRunCodeTool.args.codeStr);
+                                        runResult = obj.ToolBox.dispatchTool('run_code_file', obj.pendingRunCodeTool.args);
                                         
                                         % Log the result
-                                        % Check for success based on existence of output field and absence of error field
-                                        if isfield(runResult, 'output') && ~isfield(runResult, 'error')
-                                            fprintf('Code execution successful:\n%s\n', runResult.output);
-                                            
-                                            % Add to tool log
-                                            obj.toolLog{end+1} = struct('tool', 'run_code_file', ...
-                                                                     'args', runCodeArgs, ...
-                                                                     'result', runResult);
-                                        else
-                                            % Function returned an error
-                                            if isfield(runResult, 'error')
-                                                fprintf('Code execution failed: %s\n', runResult.error);
-                                            else
-                                                fprintf('Code execution failed with unknown error\n');
-                                            end
-                                        end
+                                        obj.toolLog{end+1} = struct('tool', 'run_code_file', ...
+                                                                 'args', obj.pendingRunCodeTool.args, ...
+                                                                 'result', runResult);
                                     catch runCodeErr
-                                        fprintf('Error executing run_code_file: %s\n', runCodeErr.message);
+                                        errorMsg = obj.redactErrorsLocal(runCodeErr);
+                                        fprintf('Error executing run_code_file: %s\n', errorMsg);
+                                        
+                                        % Add error to tool log
+                                        obj.toolLog{end+1} = struct('tool', 'run_code_file', ...
+                                                                 'args', obj.pendingRunCodeTool.args, ...
+                                                                 'error', errorMsg);
                                     end
-                                    
-                                    % Clear the pending tool
-                                    obj.pendingRunCodeTool = struct();
+                                catch innerErr
+                                    fprintf('Error in pending tool execution: %s\n', innerErr.message);
                                 end
-                            else
-                                fprintf('ERROR: File does not exist after writing: %s\n', fullFilePath);
-                                error('File creation verification failed - file does not exist after writing to it');
+                                
+                                % Clear the pending tool
+                                obj.pendingRunCodeTool = struct();
                             end
-                        catch fileWriteError
-                            fprintf('Error writing file: %s\n', fileWriteError.message);
-                            % Include stack trace for debugging
-                            if ~isempty(fileWriteError.stack)
-                                fprintf('Stack trace:\n');
-                                for i = 1:min(3, length(fileWriteError.stack))
-                                    fprintf('  %s (line %d)\n', fileWriteError.stack(i).name, fileWriteError.stack(i).line);
-                                end
+                        else
+                            % Fallback to normal tool dispatch if centralized file writing fails
+                            fprintf('Centralized file writing failed, falling back to normal tool dispatch...\n');
+                            try
+                                [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                            catch dispatchErr
+                                errorMsg = obj.redactErrorsLocal(dispatchErr);
+                                fprintf('Error in tool dispatch: %s\n', errorMsg);
+                                result = struct('status', 'error', 'error', errorMsg);
+                                isDone = false;
                             end
-                            
-                            % Will continue to normal tool dispatch as fallback
-                            fprintf('Falling back to normal tool dispatch...\n');
-                            [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
                         end
                     else
-                        % Normal tool dispatch for other tools
-                        [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                        % Normal tool dispatch for other tools with resilient error handling
+                        try
+                            [result, isDone] = obj.ToolBox.dispatchTool(toolCall.tool, toolCall.args);
+                        catch dispatchErr
+                            errorMsg = obj.redactErrorsLocal(dispatchErr);
+                            fprintf('Error in tool dispatch: %s\n', errorMsg);
+                            result = struct('status', 'error', 'error', errorMsg);
+                            isDone = false;
+                        end
                     end
                     
                     % For debug mode: Any run_code_file or first tool call is considered complete
@@ -694,7 +708,7 @@ classdef Agent < handle
                     end
                     
                     % Correctly append to structure array (not using cell array indexing)
-                    obj.chatHistory(end+1) = struct('role', 'system', 'content', resultStr);
+                    obj.chatHistory{end+1} = struct('role', 'system', 'content', resultStr);
                     
                     % Create response when:
                     % 1. Tool execution indicated task completion via isDone flag
@@ -775,63 +789,221 @@ classdef Agent < handle
                 
                 response = jsonencode(errorResponse);
             end
+
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = (exitTime - methodDebugInfo.entryTime) * 86400; % Convert to seconds
+            
+            fprintf('\n*** EXIT: processUserInput ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(methodDebugInfo.steps));
+            for i = 1:length(methodDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, methodDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
             
             return;
         end
         
         function processHistory(~, history)
             % Process history to output a formatted cell array for display
+            fprintf('\n*** ENTRY: processHistory ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
             if isempty(history)
+                fprintf('*** EXIT: processHistory (early) - History is empty ***\n');
                 return;
             end
+            
+            localDebugInfo.steps{end+1} = sprintf('Processing %d history items', length(history));
             
             formattedHistory = cell(length(history), 1);
             for i = 1:length(history)
                 message = history{i};
                 if isfield(message, 'role') && isfield(message, 'content')
                     formattedHistory{i} = sprintf('%s: %s', message.role, message.content);
+                    localDebugInfo.steps{end+1} = sprintf('Formatted item %d as role:content', i);
                 else
                     % Handle unexpected message format
                     formattedHistory{i} = jsonencode(message);
+                    localDebugInfo.steps{end+1} = sprintf('Formatted item %d as JSON (unexpected format)', i);
                 end
             end
+            
+            localDebugInfo.steps{end+1} = 'Formatting complete';
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = (exitTime - localDebugInfo.entryTime) * 86400; % Convert to seconds
+            
+            fprintf('*** EXIT: processHistory ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
             
             return;
         end
         
         function result = generateSystemMessage(~)
+
             % Generate the system message for the LLM
-            try
+            fprintf('\n*** ENTRY: generateSystemMessage ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
+            try     
+                localDebugInfo.steps{end+1} = 'Attempting to get system prompt from promptTemplates';
                 result = llm.promptTemplates.getSystemPrompt();
+                localDebugInfo.steps{end+1} = sprintf('Successfully retrieved system prompt (%d chars)', strlength(result));
             catch ME
                 warning('Agent:SystemPromptError', ...
                     'Could not load system prompt: %s. Using fallback.', ME.message);
+                localDebugInfo.steps{end+1} = sprintf('Error loading system prompt: %s', ME.message);
                 result = 'You are Orion, a helpful MATLAB and Simulink assistant.';
+                localDebugInfo.steps{end+1} = 'Using fallback system prompt';
             end
+
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = seconds(exitTime - localDebugInfo.entryTime);
+            
+            fprintf('*** EXIT: generateSystemMessage ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
         end
         
         function clearHistory(obj)
             % Clear chat history except for the system message
+            fprintf('\n*** ENTRY: clearHistory ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
             if ~isempty(obj.chatHistory)
-                systemMsg = obj.chatHistory{1};  % Keep system message
-                obj.chatHistory = {systemMsg};   % Reset history with system message
+                localDebugInfo.steps{end+1} = sprintf('Clearing chat history, current length: %d', length(obj.chatHistory));
+                % Keep only the first message (system message)
+                obj.chatHistory = obj.chatHistory(1);
+                localDebugInfo.steps{end+1} = 'Kept only system message';
+            else
+                localDebugInfo.steps{end+1} = 'Chat history was already empty';
             end
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = seconds(exitTime - localDebugInfo.entryTime); % Convert to seconds
+            
+            fprintf('*** EXIT: clearHistory ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
         end
         
         function history = getHistory(obj)
             % Return current conversation history
+            fprintf('\n*** ENTRY: getHistory ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
+            if isempty(obj.chatHistory)
+                localDebugInfo.steps{end+1} = 'Chat history is empty';
+                fprintf('WARNING: Chat history is empty\n');
+            else
+                localDebugInfo.steps{end+1} = sprintf('Retrieved chat history containing %d messages', length(obj.chatHistory));
+            end
+            
             history = obj.chatHistory;
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = seconds(exitTime - localDebugInfo.entryTime); % Convert to seconds
+            
+            fprintf('*** EXIT: getHistory ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
         end
         
         function log = getToolLog(obj)
             % Get the log of tool calls made
+            fprintf('\n*** ENTRY: getToolLog ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
+            if isempty(obj.toolLog)
+                localDebugInfo.steps{end+1} = 'Tool log is empty';
+                fprintf('Tool log is empty\n');
+            else
+                localDebugInfo.steps{end+1} = sprintf('Returning tool log with %d entries', length(obj.toolLog));
+            end
+            
             log = obj.toolLog;
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = seconds(exitTime - localDebugInfo.entryTime); % Convert to seconds
+            
+            fprintf('*** EXIT: getToolLog ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
         end
-        
+
         function files = getModifiedFiles(obj)
             % Get the list of files that were created or modified
+            fprintf('\n*** ENTRY: getModifiedFiles ***\n');
+            fprintf('*** TIMESTAMP: %s ***\n', datetime("now", "Format", "yyyy-MM-dd HH:mm:ss.SSS"));
+            localDebugInfo = struct('entryTime', datetime("now"), 'steps', {{}});
+            localDebugInfo.steps{end+1} = 'Method entry';
+            
+            if isempty(obj.modifiedFiles)
+                localDebugInfo.steps{end+1} = 'Modified files list is empty';
+                fprintf('No modified files to report\n');
+            else
+                localDebugInfo.steps{end+1} = sprintf('Returning %d modified files', length(obj.modifiedFiles));
+                fprintf('Modified files (%d):\n', length(obj.modifiedFiles));
+                for i = 1:length(obj.modifiedFiles)
+                    fprintf('  %d. %s\n', i, obj.modifiedFiles{i});
+                end
+            end
+            
             files = obj.modifiedFiles;
+            
+            % At the end of the method
+            exitTime = datetime("now");
+            executionTime = (exitTime - localDebugInfo.entryTime) * 86400; % Convert to seconds
+            
+            fprintf('*** EXIT: getModifiedFiles ***\n');
+            fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
+            fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
+            for i = 1:length(localDebugInfo.steps)
+                fprintf('***   Step %d: %s ***\n', i, localDebugInfo.steps{i});
+            end
+            fprintf('*** END OF FUNCTION EXECUTION ***\n');
         end
+
     end
     
     methods (Access = private)
@@ -856,6 +1028,92 @@ classdef Agent < handle
             errorMsg = sprintf('Error: %s', msg);
             if ~isempty(ME.stack)
                 errorMsg = sprintf('%s\nIn %s at line %d', errorMsg, ME.stack(1).name, ME.stack(1).line);
+            end
+        end
+        
+        function [result, isWriteSuccess] = centralizedWriteFile(~, filePath, content)
+            % CENTRALIZEDWRITEFILE Write content to a file with proper error handling
+            % This centralizes file handling logic to avoid code duplication
+            %
+            % Inputs:
+            %   filePath - Full path to the file to write
+            %   content - Content to write to the file
+            %
+            % Outputs:
+            %   result - Result structure with status information
+            %   isWriteSuccess - Boolean indicating if the operation was successful
+            
+            isWriteSuccess = false;
+            result = struct('status', 'error', 'tool', 'open_editor');
+            
+            try
+                % Make sure the directory exists
+                fileDir = fileparts(filePath);
+                if ~isempty(fileDir) && ~exist(fileDir, 'dir')
+                    fprintf('Creating directory: %s\n', fileDir);
+                    [mkdirSuccess, mkdirMsg] = mkdir(fileDir);
+                    if ~mkdirSuccess
+                        error('Could not create directory: %s. Error: %s', fileDir, mkdirMsg);
+                    end
+                end
+                
+                % Write file with robust error handling
+                fid = fopen(filePath, 'w');
+                if fid == -1
+                    % Try to diagnose the file access issue
+                    [folderExists, ~, ~] = exist(fileDir, 'dir');
+                    [fileExists, ~, ~] = exist(filePath, 'file');
+                    fprintf('Diagnostic: Folder exists: %d, File exists: %d\n', folderExists, fileExists);
+                    
+                    error('Could not open file for writing: %s', filePath);
+                end
+                
+                fprintf('File opened successfully, writing content (%d characters)\n', length(content));
+                bytesWritten = fprintf(fid, '%s', content);
+                fclose(fid);
+                fprintf('Wrote %d bytes to file\n', bytesWritten);
+                
+                % Verify file was created
+                if ~exist(filePath, 'file')
+                    error('File creation verification failed - file does not exist after writing to it: %s', filePath);
+                else
+                    fprintf('File successfully created and verified: %s\n', filePath);
+                    
+                    % Create successful result struct
+                    result = struct('status', 'success', ...
+                                   'tool', 'open_editor', ...
+                                   'fileName', filePath, ...
+                                   'documentInfo', struct('path', filePath, ...
+                                                         'editorStatus', 'File created successfully'));
+                                                         
+                    % Try to open in editor (but don't fail if this doesn't work)
+                    try
+                        document = matlab.desktop.editor.openDocument(filePath);
+                        fprintf('File opened in editor\n');
+                        result.documentInfo.editorStatus = 'File created and opened in editor';
+                        
+                        % Ensure file is saved to disk
+                        if document.Modified
+                            document.save();
+                            fprintf('File saved to disk via editor\n');
+                        end
+                    catch editorME
+                        fprintf('Note: Could not open file in editor: %s\n', editorME.message);
+                    end
+                    
+                    isWriteSuccess = true;
+                end
+            catch ME
+                fprintf('centralizedWriteFile ERROR: %s\n', ME.message);
+                if ~isempty(ME.stack)
+                    fprintf('  at %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+                end
+                
+                result = struct('status', 'error', ...
+                               'tool', 'open_editor', ...
+                               'error', ME.message, ...
+                               'fileName', filePath);
+                isWriteSuccess = false;
             end
         end
     end
@@ -971,7 +1229,7 @@ classdef Agent < handle
                 for i = 1:length(files)
                     f = files(i);
                     contextMsg = [contextMsg, sprintf('%-30s %-10d %-19s\n', ...
-                        f.name, f.bytes, datestr(f.datenum, 'yyyy-mm-dd HH:MM:SS'))];
+                        f.name, f.bytes, datetime(f.datenum, 'ConvertFrom', 'datenum', 'Format', 'yyyy-MM-dd HH:mm:ss'))];
                 end
                 
                 contextMsg = [contextMsg, newline];

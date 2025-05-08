@@ -182,6 +182,23 @@ classdef ToolBox < handle
             % Return names of all registered tools
             toolNames = keys(obj.tools);
         end
+        
+        function isRegistered = isToolRegistered(obj, toolName)
+            % Check if a tool is registered in the toolbox
+            % Input:
+            %   toolName - Name of the tool to check
+            % Output:
+            %   isRegistered - Boolean indicating if tool is registered
+            
+            fprintf('Checking if tool "%s" is registered...\n', toolName);
+            isRegistered = obj.tools.isKey(toolName);
+            
+            if isRegistered
+                fprintf('Tool "%s" is registered.\n', toolName);
+            else
+                fprintf('Tool "%s" is NOT registered!\n', toolName);
+            end
+        end
     end
     
     methods (Access = private)
