@@ -41,7 +41,7 @@ function secondsElapsed = safeTimeCalculation(startTime, endTime)
     exitTime = datetime("now");
     executionTime = (exitTime - localDebugInfo.entryTime) * 86400; % Convert to seconds
     
-    fprintf('*** EXIT: safeTimeCalculation ***\n');
+    fprintf('*** EXIT: safeTimeCalculation.m ***\n');
     fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
     fprintf('*** EXECUTION PATH (%d steps): ***\n', length(localDebugInfo.steps));
     for i = 1:length(localDebugInfo.steps)
