@@ -25,7 +25,7 @@ classdef Agent < handle
             obj.ToolBox = agent.ToolBox();
             obj.debugInfo.steps{end+1} = 'ToolBox initialized';
             
-            obj.chatHistory = struct('role', {}, 'content', {});
+            obj.chatHistory = {};
             obj.llmInterface = @llm.callGPT;
             obj.toolLog = {};
             obj.modifiedFiles = {};
@@ -50,14 +50,14 @@ classdef Agent < handle
                         'If you are unsure, ask the user for clarification.'];
                     obj.debugInfo.steps{end+1} = 'Extended system prompt with additional context';
                 end
-                obj.chatHistory(end+1) = struct('role', 'system', 'content', systemPrompt);
+                obj.chatHistory{end+1} = struct('role', 'system', 'content', systemPrompt);
                 obj.debugInfo.steps{end+1} = 'System message added to chat history';
             catch ME
                 warning(ME.identifier, '%s', ME.message);
                 obj.debugInfo.steps{end+1} = sprintf('Error loading system prompt: %s', ME.message);
                 
                 % Use a detailed default prompt if the system prompt can't be loaded
-                obj.chatHistory(end+1) = struct('role', 'system', 'content', [
+                obj.chatHistory{end+1} = struct('role', 'system', 'content', [
                     'You are Orion, an expert AI Agent for MATLAB and Simulink.\n', ...
                     'Your job is to help users write, debug, and understand MATLAB code and Simulink models.\n', ...
                     'Always respond in JSON format for tool calls.\n', ...
@@ -125,10 +125,10 @@ classdef Agent < handle
                         additionalPrompt = extractAfter(commandText, ":");
                         additionalPrompt = strtrim(additionalPrompt);
                         % Add the continuation prompt to history
-                        obj.chatHistory(end+1) = struct('role', 'user', 'content', additionalPrompt);
+                        obj.chatHistory{end+1} = struct('role', 'user', 'content', additionalPrompt);
                     else
                         % If no additional prompt, add a generic continuation message
-                        obj.chatHistory(end+1) = struct('role', 'user', 'content', 'Please continue from where you left off.');
+                        obj.chatHistory{end+1} = struct('role', 'user', 'content', 'Please continue from where you left off.');
                     end
                     
                     % Generate prompt with history and tool descriptions
@@ -185,10 +185,10 @@ classdef Agent < handle
             workspaceContext = obj.getWorkspaceContext(workspaceFolder);
             
             % Add user message to history
-            obj.chatHistory(end+1) = struct('role', 'user', 'content', userText);
+            obj.chatHistory{end+1} = struct('role', 'user', 'content', userText);
             
             % Add workspace context as a system message
-            obj.chatHistory(end+1) = struct('role', 'system', 'content', workspaceContext);
+            obj.chatHistory{end+1} = struct('role', 'system', 'content', workspaceContext);
             
             % Generate prompt with history and tool descriptions
             fullPrompt = llm.promptTemplates.buildPrompt(obj.chatHistory, obj.ToolBox.getToolDescriptions());
@@ -279,12 +279,13 @@ classdef Agent < handle
                                 % Debug the log item structure
                                 fprintf('Examining log item %d: %s\n', i, jsonencode(logItem));
                                 
-                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'run_code_file') && ...
-                                   isfield(logItem, 'args') && isfield(logItem.args, 'codeStr')
+                                % Look for files to extract useful information
+                                % NOTE: We no longer look for codeStr since run_code_file only uses fileName
+                                if isfield(logItem, 'tool') && strcmp(logItem.tool, 'open_or_create_file') && ...
+                                   isfield(logItem, 'args') && isfield(logItem.args, 'fileName')
                                     
-                                    % Add the code content to the open_editor args
-                                    fprintf('Found code content in log run_code_file item: %s\n', logItem.args.codeStr);
-                                    toolCall.args.content = logItem.args.codeStr;
+                                    fprintf('Found content in log open_or_create_file item\n');
+                                    toolCall.args.fileName = logItem.args.fileName;
                                     break;
                                 end
                             catch logErr
@@ -308,11 +309,30 @@ classdef Agent < handle
                         end
                     end
                     
-                    % Record thought in history
+                    % % Record LLM's reasoning in history (ReAct: Reasoning step)
+                    % % Generate tool execution intent (always)
+                    % toolIntent = sprintf('I will use %s with arguments: %s', ...
+                    %     toolCall.tool, jsonencode(toolCall.args));
+                    
+                    % % Combine with high-level reasoning if available
+                    % if isfield(toolCall, 'reasoning') && ~isempty(toolCall.reasoning)
+                    %     % Store original LLM reasoning for the final response
+                    %     llmReasoning = toolCall.reasoning;
+                    %     % Add combined reasoning to chat history
+                    %     obj.chatHistory{end+1} = struct('role', 'assistant', 'content', llmReasoning);
+                    % else
+                    %     % Use only tool intent if no high-level reasoning provided
+                    %     llmReasoning = toolIntent;
+                    %     obj.chatHistory{end+1} = struct('role', 'assistant', 'content', llmReasoning);
+                    % end
+
+                    % Record LLM's reasoning in history (Older version)
                     thought = sprintf('I will use %s with arguments: %s', ...
                         toolCall.tool, jsonencode(toolCall.args));
                     obj.chatHistory(end+1) = struct('role', 'assistant', 'content', thought);
-                    
+
+                    %% remove this after making sure it works
+
                     % Store tool call for logging
                     obj.toolLog{end+1} = struct('tool', toolCall.tool, 'args', toolCall.args);
                     
@@ -595,8 +615,8 @@ classdef Agent < handle
                     % Dispatch to appropriate tool
                     fprintf('Executing tool: %s\n', toolCall.tool);
                     
-                    % Special handling for open_editor to ensure file creation works
-                    if strcmp(toolCall.tool, 'open_editor') && isfield(toolCall.args, 'fileName') && isfield(toolCall.args, 'content')
+                    % Special handling for open_or_create_file to ensure file creation works
+                    if strcmp(toolCall.tool, 'open_or_create_file') && isfield(toolCall.args, 'fileName') && isfield(toolCall.args, 'content')
                         % Force files to be created in the workspace folder
                         [~, filename, ext] = fileparts(toolCall.args.fileName);
                         
@@ -625,13 +645,13 @@ classdef Agent < handle
                             if ~isempty(fieldnames(obj.pendingRunCodeTool)) && ...
                               isfield(obj.pendingRunCodeTool, 'tool') && ...
                               strcmp(obj.pendingRunCodeTool.tool, 'run_code_file') && ...
-                              isfield(obj.pendingRunCodeTool.args, 'codeStr')
+                              isfield(obj.pendingRunCodeTool.args, 'fileName')
                                 
                                 fprintf('Executing pending run_code_file tool...\n');
                                 try
                                     % Call the run_code_file tool with centralized error handling
                                     try
-                                        fprintf('Running code: %s\n', obj.pendingRunCodeTool.args.codeStr);
+                                        fprintf('Running file: %s\n', obj.pendingRunCodeTool.args.fileName);
                                         runResult = obj.ToolBox.dispatchTool('run_code_file', obj.pendingRunCodeTool.args);
                                         
                                         % Log the result
@@ -686,7 +706,7 @@ classdef Agent < handle
                     
                     % Check for file creation/modification
                     if isfield(result, 'fileName')
-                        % For tools like open_editor that create/modify files
+                        % For tools like open_or_create_file that create/modify files
                         if ~ismember(result.fileName, obj.modifiedFiles)
                             obj.modifiedFiles{end+1} = result.fileName;
                         end
@@ -707,7 +727,7 @@ classdef Agent < handle
                         resultStr = 'Result cannot be displayed in text form';
                     end
                     
-                    % Correctly append to structure array (not using cell array indexing)
+                    % Correctly append to cell array using curly brace indexing
                     obj.chatHistory{end+1} = struct('role', 'system', 'content', resultStr);
                     
                     % Create response when:
@@ -726,6 +746,15 @@ classdef Agent < handle
                             'files', {obj.modifiedFiles}, ...
                             'log', {obj.toolLog}, ...
                             'snapshot', '');
+                        
+                        % Create complete response with all required fields
+                        % finalResponse = struct(...
+                        %     'summary', 'Task completed successfully', ...
+                        %     'files', {obj.modifiedFiles}, ...
+                        %     'log', {obj.toolLog}, ...
+                        %     'reasoning', llmReasoning, ...
+                        %     'toolIntent', toolIntent, ...
+                        %     'snapshot', '');
                         
                         % Add specific summary for run_code_file tool
                         if strcmp(toolCall.tool, 'run_code_file')
@@ -792,7 +821,7 @@ classdef Agent < handle
 
             % At the end of the method
             exitTime = datetime("now");
-            executionTime = (exitTime - methodDebugInfo.entryTime) * 86400; % Convert to seconds
+            executionTime = utils.safeTimeCalculation(methodDebugInfo.entryTime, exitTime); % Convert to seconds
             
             fprintf('\n*** EXIT: processUserInput ***\n');
             fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);
@@ -894,7 +923,7 @@ classdef Agent < handle
             if ~isempty(obj.chatHistory)
                 localDebugInfo.steps{end+1} = sprintf('Clearing chat history, current length: %d', length(obj.chatHistory));
                 % Keep only the first message (system message)
-                obj.chatHistory = obj.chatHistory(1);
+                obj.chatHistory = {obj.chatHistory{1}};
                 localDebugInfo.steps{end+1} = 'Kept only system message';
             else
                 localDebugInfo.steps{end+1} = 'Chat history was already empty';
@@ -1044,7 +1073,7 @@ classdef Agent < handle
             %   isWriteSuccess - Boolean indicating if the operation was successful
             
             isWriteSuccess = false;
-            result = struct('status', 'error', 'tool', 'open_editor');
+            result = struct('status', 'error', 'tool', 'open_or_create_file');
             
             try
                 % Make sure the directory exists
@@ -1081,7 +1110,7 @@ classdef Agent < handle
                     
                     % Create successful result struct
                     result = struct('status', 'success', ...
-                                   'tool', 'open_editor', ...
+                                   'tool', 'open_or_create_file', ...
                                    'fileName', filePath, ...
                                    'documentInfo', struct('path', filePath, ...
                                                          'editorStatus', 'File created successfully'));
@@ -1110,7 +1139,7 @@ classdef Agent < handle
                 end
                 
                 result = struct('status', 'error', ...
-                               'tool', 'open_editor', ...
+                               'tool', 'open_or_create_file', ...
                                'error', ME.message, ...
                                'fileName', filePath);
                 isWriteSuccess = false;
