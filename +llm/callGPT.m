@@ -1,3 +1,11 @@
+    % CALLGPT Communicates with OpenAI API or local Llama endpoint
+    % Handles HTTP requests to LLM services and returns response
+    %
+    % Input:
+    %   prompt - String or struct containing the prompt to send to LLM
+    %
+    % Output:
+    %   response - String containing the LLM response
 function response = callGPT(prompt)
     % CALLGPT Communicates with OpenAI API or local Llama endpoint
     % Handles HTTP requests to LLM services and returns response
@@ -86,6 +94,7 @@ function response = callGPT(prompt)
         % String concatenation with proper syntax (no trailing semicolon)
         response = [
             '{',...
+            '"reasoning": "I need to create a MATLAB script to plot a sine wave and its derivative. I will first create the file using open_or_create_file and include code that generates a figure with both plots. After creating the file, I will execute it using run_code_file to generate the visualization.",',...
             '"summary": "Created a MATLAB script to plot a sine wave and its derivative, and then executed it.",',...
             '"tool": "open_or_create_file",',...
             '"args": {',...
@@ -96,8 +105,8 @@ function response = callGPT(prompt)
             '  "plot_sine_and_derivative.m"',...
             '],',...
             '"log": [',...
-            '  "open_or_create_file(plot_sine_and_derivative.m, ...)",',...
-            '  "run_code_file(plot_sine_and_derivative.m)"',...
+            '  {"tool": "open_or_create_file", "args": {"fileName": "plot_sine_and_derivative.m"}},',...
+            '  {"tool": "run_code_file", "args": {"fileName": "plot_sine_and_derivative.m"}}',...
             ']',...
             '}'
         ];
@@ -109,8 +118,10 @@ function response = callGPT(prompt)
     % Continue with real API calls (this code will never execute in test mode)
     fprintf('Making actual API call to LLM service...\n');
     
-    % Check time since last API call for rate limiting
-    timeSinceLastCall = seconds(currentTime - lastCallTime);
+    % Check time since last API call for rate limiting with inline safe calculation
+    timeSinceLastCall = utils.safeTimeCalculation(currentTime, lastCallTime);
+    
+    fprintf('Time since last API call: %.2f seconds\n', timeSinceLastCall);
     
     if timeSinceLastCall < MIN_DELAY_SECONDS
         % Wait to avoid hitting rate limits
