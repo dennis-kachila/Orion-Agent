@@ -265,10 +265,24 @@ classdef Agent < handle
                         if iscell(toolCall.log)
                             logArray = toolCall.log;
                             fprintf('Log is a cell array with %d items\n', length(logArray));
+                        elseif isstruct(toolCall.log)
+                            % Handle struct array properly
+                            try
+                                % Convert struct array to cell array properly
+                                logArray = cell(1, length(toolCall.log));
+                                for logIdx = 1:length(toolCall.log)
+                                    logArray{logIdx} = toolCall.log(logIdx);
+                                end
+                                fprintf('Log is a struct array with %d items, converted to cell array\n', length(logArray));
+                            catch convErr
+                                % Fallback to single-element cell array if conversion fails
+                                logArray = {toolCall.log};
+                                fprintf('Log conversion failed, treating as single item: %s\n', convErr.message);
+                            end
                         else
-                            % Convert struct array to cell array if needed
+                            % Convert other array types to cell array if needed
                             logArray = num2cell(toolCall.log);
-                            fprintf('Log is a struct array with %d items\n', length(logArray));
+                            fprintf('Log is a %s array with %d items\n', class(toolCall.log), length(logArray));
                         end
                         
                         % Look for run_code in log that might have the content
@@ -309,29 +323,14 @@ classdef Agent < handle
                         end
                     end
                     
-                    % % Record LLM's reasoning in history (ReAct: Reasoning step)
-                    % % Generate tool execution intent (always)
-                    % toolIntent = sprintf('I will use %s with arguments: %s', ...
-                    %     toolCall.tool, jsonencode(toolCall.args));
-                    
-                    % % Combine with high-level reasoning if available
-                    % if isfield(toolCall, 'reasoning') && ~isempty(toolCall.reasoning)
-                    %     % Store original LLM reasoning for the final response
-                    %     llmReasoning = toolCall.reasoning;
-                    %     % Add combined reasoning to chat history
-                    %     obj.chatHistory{end+1} = struct('role', 'assistant', 'content', llmReasoning);
-                    % else
-                    %     % Use only tool intent if no high-level reasoning provided
-                    %     llmReasoning = toolIntent;
-                    %     obj.chatHistory{end+1} = struct('role', 'assistant', 'content', llmReasoning);
-                    % end
-
                     % Record LLM's reasoning in history (Older version)
-                    thought = sprintf('I will use %s with arguments: %s', ...
-                        toolCall.tool, jsonencode(toolCall.args));
-                    obj.chatHistory(end+1) = struct('role', 'assistant', 'content', thought);
-
-                    %% remove this after making sure it works
+                    % Extract reasoning if available, otherwise use default thought
+                    if isfield(toolCall, 'reasoning') && ~isempty(toolCall.reasoning)
+                        llmReasoning = toolCall.reasoning;
+                    else
+                        llmReasoning = 'I analyzed your request and determined the appropriate action.';
+                    end
+                    obj.chatHistory{end+1} = struct('role', 'assistant', 'content', llmReasoning);
 
                     % Store tool call for logging
                     obj.toolLog{end+1} = struct('tool', toolCall.tool, 'args', toolCall.args);
@@ -600,7 +599,6 @@ classdef Agent < handle
                                     fprintf('  %d. %s\n', i, obj.modifiedFiles{i});
                                 end
                             end
-                            fprintf('*** END TOOL EXECUTION SUMMARY ***\n\n');
                             
                             methodDebugInfo.steps{end+1} = 'Tool execution completed';
                         end
@@ -740,21 +738,24 @@ classdef Agent < handle
                         
                         fprintf('Task completed successfully, generating final response\n');
                         
+                        % Capture reasoning and tool intent for UI display
+                        toolIntent = sprintf('I will use %s with arguments: %s', toolCall.tool, jsonencode(toolCall.args));
+                        
+                        % Extract reasoning from LLM response if available
+                        if isfield(toolCall, 'reasoning') && ~isempty(toolCall.reasoning)
+                            llmReasoning = toolCall.reasoning;
+                        else
+                            llmReasoning = 'I analyzed your request and determined the appropriate action.';
+                        end
+                        
                         % Create complete response with all required fields
                         finalResponse = struct(...
                             'summary', 'Task completed successfully', ...
                             'files', {obj.modifiedFiles}, ...
                             'log', {obj.toolLog}, ...
+                            'reasoning', llmReasoning, ...
+                            'toolIntent', toolIntent, ...
                             'snapshot', '');
-                        
-                        % Create complete response with all required fields
-                        % finalResponse = struct(...
-                        %     'summary', 'Task completed successfully', ...
-                        %     'files', {obj.modifiedFiles}, ...
-                        %     'log', {obj.toolLog}, ...
-                        %     'reasoning', llmReasoning, ...
-                        %     'toolIntent', toolIntent, ...
-                        %     'snapshot', '');
                         
                         % Add specific summary for run_code_file tool
                         if strcmp(toolCall.tool, 'run_code_file')
@@ -923,7 +924,7 @@ classdef Agent < handle
             if ~isempty(obj.chatHistory)
                 localDebugInfo.steps{end+1} = sprintf('Clearing chat history, current length: %d', length(obj.chatHistory));
                 % Keep only the first message (system message)
-                obj.chatHistory = {obj.chatHistory{1}};
+                obj.chatHistory = obj.chatHistory(1);
                 localDebugInfo.steps{end+1} = 'Kept only system message';
             else
                 localDebugInfo.steps{end+1} = 'Chat history was already empty';

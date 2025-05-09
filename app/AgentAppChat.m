@@ -309,7 +309,17 @@ classdef AgentAppChat < matlab.apps.AppBase
                 if isJsonResponse && isstruct(responseData)
                     % New JSON format response
                     
-                    % Display summary if present
+                    % First display the reasoning if present
+                    if isfield(responseData, 'reasoning') && ~isempty(responseData.reasoning)
+                        app.updateChatHistory(['Reasoning: ' responseData.reasoning], 'system');
+                    end
+                    
+                    % Then display the tool intent if present
+                    if isfield(responseData, 'toolIntent') && ~isempty(responseData.toolIntent)
+                        app.updateChatHistory(['Action: ' responseData.toolIntent], 'system');
+                    end
+                    
+                    % Finally display summary if present
                     if isfield(responseData, 'summary') && ~isempty(responseData.summary)
                         app.updateChatHistory(responseData.summary, 'assistant');
                     else
@@ -327,7 +337,7 @@ classdef AgentAppChat < matlab.apps.AppBase
                         app.updateWorkflowLog(fileList);
                     end
                     
-                    % Process log entries for workflow display
+                    % Process log entries for workflow display 
                     if isfield(responseData, 'log') && ~isempty(responseData.log)
                         app.updateWorkflowLog('Tool execution log:');
                         
