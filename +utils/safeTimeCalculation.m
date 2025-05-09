@@ -18,28 +18,33 @@ function secondsElapsed = safeTimeCalculation(startTime, endTime)
     localDebugInfo.steps{end+1} = 'Method entry';
     
     try
-        % First try with seconds() function (newer MATLAB)
-        localDebugInfo.steps{end+1} = 'Attempting to calculate using seconds() function';
-        secondsElapsed = seconds(endTime - startTime);
-        localDebugInfo.steps{end+1} = 'Successfully calculated time using seconds() function';
-    catch
-        % Fallback for older MATLAB versions
-        localDebugInfo.steps{end+1} = 'seconds() function failed, using fallback method';
-        try
-            % Convert to seconds by multiplying by 86400 (seconds in a day)
-            secondsElapsed = (endTime - startTime) * 86400;
-            localDebugInfo.steps{end+1} = 'Successfully calculated time using multiplication method';
-        catch
-            % Last resort fallback
-            secondsElapsed = 0;
-            localDebugInfo.steps{end+1} = 'All calculation methods failed, returning 0';
-            warning('Unable to calculate time difference between datetime objects');
+        % Calculate time difference
+        timeDiff = endTime - startTime;
+        
+        % Check if result is a duration object
+        if isduration(timeDiff)
+            localDebugInfo.steps{end+1} = 'Converting duration to seconds';
+            secondsElapsed = seconds(timeDiff);
+        else
+            % For older MATLAB versions or if not a duration
+            localDebugInfo.steps{end+1} = 'Using traditional calculation method';
+            secondsElapsed = timeDiff * 86400; % Convert days to seconds
         end
+        localDebugInfo.steps{end+1} = 'Time calculation successful';
+    catch ME
+        % Handle any errors gracefully
+        warning('TimeCalcError:Failed', '%s', ME.message);
+        secondsElapsed = 0;
+        localDebugInfo.steps{end+1} = sprintf('Error in calculation: %s', ME.message);
     end
     
-    % At the end of the method
+    % For the function's own execution time reporting, use the traditional method
     exitTime = datetime("now");
-    executionTime = (exitTime - localDebugInfo.entryTime) * 86400; % Convert to seconds
+    try
+        executionTime = double(seconds(exitTime - localDebugInfo.entryTime));
+    catch
+        executionTime = double((exitTime - localDebugInfo.entryTime) * 86400);
+    end
     
     fprintf('*** EXIT: safeTimeCalculation.m ***\n');
     fprintf('*** EXECUTION TIME: %.6f seconds ***\n', executionTime);

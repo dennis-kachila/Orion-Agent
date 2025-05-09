@@ -1,4 +1,4 @@
-    % CALLGPT Communicates with LLM API endpoint 
+% CALLGPT Communicates with LLM API endpoint 
     % Handles HTTP requests to LLM services and returns response
     %
     % Input:
@@ -119,9 +119,17 @@ function response = callGPT(prompt)
     fprintf('Making actual API call to LLM service...\n');
     
     % Check time since last API call for rate limiting with inline safe calculation
-    timeSinceLastCall = utils.safeTimeCalculation(currentTime, lastCallTime);
+    persistent lastCallTime;
+    persistent MIN_DELAY_SECONDS; % Make MIN_DELAY_SECONDS persistent
+
+    if isempty(lastCallTime)
+        lastCallTime = datetime('now') - seconds(120); % Initialize to a time sufficiently in the past
+        MIN_DELAY_SECONDS = 20.0; % Initialize MIN_DELAY_SECONDS only once
+    end
+    % Corrected order of arguments for safeTimeCalculation
+    timeSinceLastCall = utils.safeTimeCalculation(lastCallTime, currentTime);
     
-    fprintf('Time since last API call: %.2f seconds\n', timeSinceLastCall);
+    fprintf('Time since last API call: %.2f seconds (Min Delay: %.1f s)\n', timeSinceLastCall, MIN_DELAY_SECONDS);
     
     if timeSinceLastCall < MIN_DELAY_SECONDS
         % Wait to avoid hitting rate limits
@@ -168,11 +176,12 @@ function response = callGPT(prompt)
             % This allows the agent to continue functioning instead of breaking
             if strcmpi(apiConfig.provider, 'gemini')
                 fprintf('Creating fallback tool response for Gemini rate limit\n');
-                response = sprintf('{"tool": "run_code", "args": {"codeStr": "disp(''API rate limit reached (HTTP 429)'');\\ndisp(''Please wait at least %d seconds before trying again'');"}}', round(MIN_DELAY_SECONDS));
+                % Ensure MIN_DELAY_SECONDS in the message is an integer or nicely formatted float
+                response = sprintf('{"tool": "run_code_file", "args": {"codeStr": "disp(''API rate limit reached (HTTP 429). Please wait approximately %.0f seconds before trying again.'');"}}', MIN_DELAY_SECONDS);
                 return;
             else
                 % For other providers, return an error in standard format
-                errorMsg = sprintf('API rate limit reached (HTTP 429). Please wait at least %d seconds before trying again.', round(MIN_DELAY_SECONDS));
+                errorMsg = sprintf('API rate limit reached (HTTP 429). Please wait at least %.0f seconds before trying again.', MIN_DELAY_SECONDS);
                 response = sprintf('{"error": "%s"}', errorMsg);
                 return;
             end
@@ -310,7 +319,7 @@ function response = callGemini(prompt, config)
         % Prepare API request
         options = weboptions('HeaderFields', {'Content-Type', 'application/json'; ...
                                              'x-goog-api-key', config.apiKey}, ...
-                            'Timeout', 120);
+                            'Timeout', 120, 'ContentType', 'json'); % Ensure ContentType is json for webwrite
         
         requestBody = struct(); % Initialize requestBody
         system_prompt_text = '';
@@ -387,7 +396,7 @@ function response = callGemini(prompt, config)
 
         % Convert request to JSON
         requestJSON = jsonencode(requestBody);
-        fprintf('Gemini Request JSON: %s\n', requestJSON); % DEBUG LINE
+        fprintf('Gemini Request JSON (before webwrite): %s\n', requestJSON); % DEBUG LINE
         
         % Make API call
         fprintf('Calling Gemini API endpoint: %s\n', config.endpoint);

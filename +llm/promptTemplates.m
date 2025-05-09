@@ -70,7 +70,7 @@ classdef promptTemplates
                             toolsText = [toolsText, 'Parameters:\n'];
                             for j = 1:length(paramFields)
                                 paramName = paramFields{j};
-                                toolsText = [toolsText, sprintf('  - %s: %s\n', paramName, class(tool.parameters.(paramName)))];
+                                toolsText = [toolsText, sprintf('  - %s: %s\n', paramName, tool.parameters.(paramName))];
                             end
                         end
                     end
