@@ -4,9 +4,9 @@ classdef Config
     
     properties (Constant)
         % Debug Settings
-        DEBUG_MODE = true;           % Master debug mode toggle
-        DEBUG_API_CALLS = true;      % Use hardcoded responses instead of LLM API calls
-        DEBUG_AUTO_EXECUTE = true;   % Auto-execute tool chains without user confirmation
+        DEBUG_MODE = false           % Master debug mode toggle
+        DEBUG_API_CALLS = false;      % Use hardcoded responses instead of LLM API calls
+        DEBUG_AUTO_EXECUTE = false;   % Auto-execute tool chains without user confirmation
         
         % API Settings
         MAX_API_CALLS = 30;          % Maximum API calls per session
